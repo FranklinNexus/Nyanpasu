@@ -21,9 +21,10 @@
 ## 📸 Gallery
 
 <div align="center">
-  <img src="screenshots/01_main.jpg" width="30%" alt="Main Interface" />
-  <img src="screenshots/02_features.jpg" width="30%" alt="Smart Features" />
-  <img src="screenshots/03_result.jpg" width="30%" alt="Final Result" />
+  <img src="screenshots/01_main.jpg" width="24%" alt="Main Interface" />
+  <img src="screenshots/02_features.jpg" width="24%" alt="Smart Features" />
+  <img src="screenshots/03_result.jpg.jpg" width="24%" alt="Final Result" />
+  <img src="screenshots/04_dual.jpg" width="24%" alt="Dual Mode" />
 </div>
 
 ## ✨ Why Nyanpasu?
