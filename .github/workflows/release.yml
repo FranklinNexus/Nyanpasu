@@ -1,0 +1,46 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 触发条件: 推送版本标签 (例如 v1.0.0)
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: ☕ Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+        
+    - name: 🐘 Grant execute permission for gradlew
+      run: chmod +x gradlew
+      
+    - name: 🔨 Build Release APK
+      run: ./gradlew assembleRelease
+      
+    - name: 📝 Extract Release Notes
+      id: release_notes
+      run: |
+        # 从 CHANGELOG.md 提取当前版本的更新日志
+        VERSION=${GITHUB_REF#refs/tags/v}
+        awk "/^## \[?$VERSION\]?/,/^## \[?[0-9]/" CHANGELOG.md | sed '1d;$d' > release_notes.txt
+        
+    - name: 🚀 Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release_notes.txt
+        files: |
+          app/build/outputs/apk/release/*.apk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- V18.0 Porcelain White 主题色 -->
+    <color name="brand_pink">#FF80AB</color>
+    <color name="brand_pink_dim">#FFB2DD</color>
+    <color name="brand_pink_dark">#C94F7C</color>
+    
+    <color name="brand_blue">#64B5F6</color>
+
+    <!-- 背景系统 -->
+    <color name="app_background">#F8F9FA</color>
+    <color name="card_surface">#FFFFFF</color>
+    
+    <!-- 文本系统 -->
+    <color name="text_primary">#2D2D2D</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+
+    <!-- 辅助色 -->
+    <color name="divider">#EEEEEE</color>
+    <color name="input_bg">#F5F5F5</color>
+    <color name="peach_accent">#FFE0B2</color>
+    <color name="lavender_accent">#E1BEE7</color>
+    
+    <!-- 兼容别名 (向后兼容主题文件) -->
+    <color name="soft_pink">@color/brand_pink</color>
+    <color name="soft_pink_light">@color/brand_pink_dim</color>
+    <color name="soft_pink_dark">@color/brand_pink_dark</color>
+    <color name="soft_blue">@color/brand_blue</color>
+    <color name="soft_blue_light">#9BE7FF</color>
+    <color name="off_white">@color/app_background</color>
+    <color name="card_background">@color/card_surface</color>
+    
+    <!-- Material Design 别名 -->
+    <color name="purple_200">@color/brand_pink</color>
+    <color name="purple_500">@color/brand_pink</color>
+    <color name="purple_700">@color/brand_pink</color>
+    <color name="teal_200">@color/brand_blue</color>
+    <color name="teal_700">@color/brand_blue</color>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+</resources>

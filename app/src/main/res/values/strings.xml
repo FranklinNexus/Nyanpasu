@@ -1,0 +1,94 @@
+<resources>
+    <!-- App Identity -->
+    <string name="app_name">Nyanpasu</string>
+    <string name="app_title">Daily Wallpaper 🌸</string>
+    <string name="app_subtitle">Your kawaii wallpaper companion</string>
+    
+    <!-- Main Screen -->
+    <string name="mascot_description">Cute mascot icon</string>
+    <string name="wallpaper_preview">Wallpaper preview</string>
+    <string name="no_wallpaper_yet">No wallpaper yet\n(｡•́︿•̀｡)</string>
+    
+    <!-- Buttons -->
+    <string name="btn_refresh">Refresh ✨</string>
+    <string name="btn_undo">Undo 🔙</string>
+    <string name="btn_save">Save 💾</string>
+    <string name="btn_home">Home</string>
+    <string name="btn_lock">Lock</string>
+    
+    <!-- Mode Selector -->
+    <string name="mode_label">Mode:</string>
+    <string name="mode_pure">Pure ☁️</string>
+    <string name="mode_mix">Mix 🎲</string>
+    <string name="mode_nsfw">NSFW 🔥</string>
+    
+    <!-- View Indicators -->
+    <string name="indicator_home">Home Screen</string>
+    <string name="indicator_lock">Lock Screen</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Settings ⚙️</string>
+    <string name="auto_update_title">Auto-Update</string>
+    <string name="schedule_label">Auto:</string>
+    <string name="schedule_daily_7am">Daily 7:00 AM</string>
+    <string name="schedule_6h">Every 6 Hours</string>
+    <string name="schedule_12h">Every 12 Hours</string>
+    <string name="schedule_24h">Every 24 Hours</string>
+    
+    <!-- Tag Input -->
+    <string name="tag_hint">Add tag…</string>
+    <string name="tag_strict_mode">Strict Mode (100%% match)</string>
+    <string name="tag_soft_mode">Soft Mode (20%% chance)</string>
+    
+    <!-- Status Messages -->
+    <string name="status_waiting">Waiting for magic… (｡•́︿•̀｡)</string>
+    <string name="status_downloading">Downloading… (๑•̀ㅂ•́)و✧</string>
+    <string name="status_success">All done! (ﾉ>ω&lt;)ﾉ</string>
+    <string name="status_error">Oops! Something went wrong (╥﹏╥)</string>
+    <string name="status_instant_load">Instant Load! ⚡</string>
+    <string name="status_refilling">Refilling… 📦</string>
+    <string name="status_summoning">Summoning… ⌛</string>
+    <string name="status_cooling_down">Please wait a moment… cooling down ☕</string>
+    
+    <!-- Wallpaper Update Messages -->
+    <string name="wallpaper_updated_home">Home Updated! ✨</string>
+    <string name="wallpaper_updated_lock">Lock Updated! ✨</string>
+    <string name="wallpaper_updated_both">Both Updated! ✨</string>
+    <string name="wallpaper_restored">Restored!</string>
+    <string name="wallpaper_saved">Saved to Gallery!</string>
+    
+    <!-- Mascot Responses -->
+    <string name="mascot_greeting">Nyanpasu~ 👋</string>
+    <string name="mascot_safe_mode">Safe mode engaged! 🛡️</string>
+    <string name="mascot_mix_mode">Mixing things up! (⁄ ⁄•⁄ω⁄•⁄ ⁄)⁄</string>
+    <string name="mascot_nsfw_mode">Ahem… Adult mode on. 🔥</string>
+    
+    <!-- Developer Dialog -->
+    <string name="developer_title">Developer (´ ε ` )</string>
+    <string name="developer_message">Hello! (｡♥‿♥｡)\nThanks for using Nyanpasu~\n\nMade with ❤ by [KuroshiMira]\nA veteran otaku building dreams!\n\nWanna be friends? Let\'s grab coffee!\n(〃￣ω￣〃)\n\nProject: Nyanpasu Wallpaper\nVersion: %1$s\n\n(✧ω✧) Enjoy your Moe journey!</string>
+    <string name="developer_btn_blog">My Blog</string>
+    <string name="developer_btn_contact">Contact Me</string>
+    <string name="telegram_not_found">Telegram not found (ノдヽ)</string>
+    
+    <!-- Notifications -->
+    <string name="notification_title">Delivery! 📦</string>
+    <string name="notification_text">New wallpaper arrived! ( ´ ▽ ` )</string>
+    <string name="notification_channel_name">Wallpaper Updates</string>
+    <string name="notification_channel_desc">Notifications for new wallpapers</string>
+    
+    <!-- Errors -->
+    <string name="error_network">Network error. Please check your connection.</string>
+    <string name="error_no_results">No results found. Try different tags?</string>
+    <string name="error_download_failed">Download failed. Please try again.</string>
+    <string name="error_file_save">Failed to save file.</string>
+    
+    <!-- Accessibility -->
+    <string name="accessibility_logo">App logo, tap 10 times for easter egg</string>
+    <string name="accessibility_preview">Wallpaper preview image</string>
+    <string name="accessibility_home_btn">Toggle home screen wallpaper mode</string>
+    <string name="accessibility_lock_btn">Toggle lock screen wallpaper mode</string>
+    
+    <!-- Content Descriptions -->
+    <string name="cd_mascot">Mascot icon</string>
+    <string name="cd_preview_image">Wallpaper preview</string>
+</resources>
