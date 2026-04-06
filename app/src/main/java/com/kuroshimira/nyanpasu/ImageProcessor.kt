@@ -2,6 +2,7 @@ package com.kuroshimira.nyanpasu
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -68,8 +69,10 @@ object ImageProcessor {
 
     /**
      * OEM / 系统对 [WallpaperManager.setBitmap] 偶发只接受软件 ARGB；解码或 Coil 偶发 HARDWARE。
+     * [Bitmap.Config.HARDWARE] 仅 API 26+ 存在，minSdk 24 时需在分支内引用以满足 Lint。
      */
     fun forWallpaperManager(bitmap: Bitmap): Bitmap {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return bitmap
         if (bitmap.config != Bitmap.Config.HARDWARE) return bitmap
         return bitmap.copy(Bitmap.Config.ARGB_8888, true).also {
             if (!bitmap.isRecycled) bitmap.recycle()

@@ -26,7 +26,11 @@ import java.io.FileOutputStream
 
 import kotlinx.coroutines.Dispatchers
 
+import kotlinx.coroutines.TimeoutCancellationException
+
 import kotlinx.coroutines.withContext
+
+import kotlinx.coroutines.withTimeout
 
 
 
@@ -37,6 +41,10 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
 
     companion object {
+
+        /** 图源多源串行重试无上限时可能卡数分钟；超时会失败并收起主界面加载状态。 */
+        private const val SEARCH_TIMEOUT_HOME_MS = 120_000L
+        private const val SEARCH_TIMEOUT_LOCK_MS = 75_000L
 
         @Volatile
 
@@ -113,7 +121,18 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
 
 
-            var homeUrl = SetuSearchEngine.search(searchCtx, r18Mode)
+            var homeUrl =
+                try {
+                    withTimeout(SEARCH_TIMEOUT_HOME_MS) {
+                        SetuSearchEngine.search(searchCtx, r18Mode)
+                    }
+                } catch (_: TimeoutCancellationException) {
+                    Log.e(
+                        "WallpaperWorker",
+                        "Setu search (home) timed out after ${SEARCH_TIMEOUT_HOME_MS}ms",
+                    )
+                    ""
+                }
 
             if (homeUrl.isEmpty()) {
 
@@ -145,11 +164,33 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
                 )
 
-                lockUrl = SetuSearchEngine.search(lockCtx, r18Mode)
+                lockUrl =
+                    try {
+                        withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
+                            SetuSearchEngine.search(lockCtx, r18Mode)
+                        }
+                    } catch (_: TimeoutCancellationException) {
+                        Log.e(
+                            "WallpaperWorker",
+                            "Setu search (lock) timed out after ${SEARCH_TIMEOUT_LOCK_MS}ms",
+                        )
+                        ""
+                    }
 
                 if (lockUrl == homeUrl && lockUrl.isNotEmpty()) {
 
-                    lockUrl = SetuSearchEngine.searchDistinct(lockCtx, r18Mode, homeUrl)
+                    lockUrl =
+                        try {
+                            withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
+                                SetuSearchEngine.searchDistinct(lockCtx, r18Mode, homeUrl)
+                            }
+                        } catch (_: TimeoutCancellationException) {
+                            Log.e(
+                                "WallpaperWorker",
+                                "Setu searchDistinct timed out after ${SEARCH_TIMEOUT_LOCK_MS}ms",
+                            )
+                            ""
+                        }
 
                 }
 
