@@ -28,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 
 import kotlinx.coroutines.TimeoutCancellationException
 
+import kotlinx.coroutines.delay
+
 import kotlinx.coroutines.withContext
 
 import kotlinx.coroutines.withTimeout
@@ -43,8 +45,11 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
     companion object {
 
         /** 图源多源串行重试无上限时可能卡数分钟；超时会失败并收起主界面加载状态。 */
-        private const val SEARCH_TIMEOUT_HOME_MS = 120_000L
-        private const val SEARCH_TIMEOUT_LOCK_MS = 75_000L
+        private const val SEARCH_TIMEOUT_HOME_MS = 150_000L
+        private const val SEARCH_TIMEOUT_LOCK_MS = 90_000L
+
+        private const val DOWNLOAD_RETRY = 3
+        private const val DOWNLOAD_RETRY_DELAY_MS = 1_200L
 
         @Volatile
 
@@ -362,19 +367,56 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
     private suspend fun downloadBitmap(loader: ImageLoader, url: String): Bitmap? {
 
-        return try {
+        val shortUrl = if (url.length > 96) url.take(96) + "…" else url
 
-            val request = ImageRequest.Builder(applicationContext).data(url).allowHardware(false).build()
+        repeat(DOWNLOAD_RETRY) { attempt ->
 
-            val result = (loader.execute(request) as? SuccessResult)?.drawable
+            try {
 
-            (result as? android.graphics.drawable.BitmapDrawable)?.bitmap
+                val request =
+                    ImageRequest.Builder(applicationContext).data(url).allowHardware(false).build()
 
-        } catch (_: Exception) {
+                when (val outcome = loader.execute(request)) {
 
-            null
+                    is SuccessResult -> {
+
+                        val bmp = (outcome.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+
+                        if (bmp != null) return bmp
+
+                        Log.w(
+                            "WallpaperWorker",
+                            "download: SuccessResult but no bitmap (attempt ${attempt + 1}) $shortUrl",
+                        )
+                    }
+
+                    else -> {
+
+                        Log.w(
+                            "WallpaperWorker",
+                            "download: ${outcome::class.simpleName} (attempt ${attempt + 1}) $shortUrl",
+                        )
+                    }
+
+                }
+
+            } catch (e: Exception) {
+
+                Log.w(
+                    "WallpaperWorker",
+                    "download failed (attempt ${attempt + 1}) $shortUrl",
+                    e,
+                )
+
+            }
+
+            if (attempt < DOWNLOAD_RETRY - 1) delay(DOWNLOAD_RETRY_DELAY_MS)
 
         }
+
+        Log.e("WallpaperWorker", "download gave up after $DOWNLOAD_RETRY tries: $shortUrl")
+
+        return null
 
     }
 
