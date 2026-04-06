@@ -11,8 +11,7 @@ import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.RectF
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -31,7 +30,6 @@ import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -44,10 +42,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val FN_BUFFER_A = "wallpaper_buffer_a.png"
+        private const val FN_BUFFER_B = "wallpaper_buffer_b.png"
+        private const val FN_LEGACY_BUFFER = "wallpaper_buffer.png"
+    }
 
     private lateinit var binding: ActivityMainBinding
     private val tagsMap = mutableMapOf<String, Boolean>()
@@ -57,9 +62,6 @@ class MainActivity : AppCompatActivity() {
     private var homeState = 1
     private var lockState = 0
     private var isPreviewingHome = true
-    
-    // --- ⚡ V24.0 弹药库系统 ---
-    private var isRefillingBuffer = false // 标记是否正在后台补充弹药
     
     // --- 🔥 V27.0 口味选择器 ---
     private var r18Mode = 0 // 0=Pure, 1=NSFW, 2=Mix
@@ -228,12 +230,7 @@ class MainActivity : AppCompatActivity() {
             else addChipToGroup(entry, false)
         }
 
-        // --- 🚀 V24.0 启动逻辑：检查库存 ---
-        val bufferFile = File(filesDir, "wallpaper_buffer.png")
-        if (!bufferFile.exists()) {
-            // 如果没有库存（第一次安装），启动预加载，但此时不显示 Loading
-            refillBuffer(isUrgent = false)
-        }
+        migrateLegacyPrefetchIfNeeded()
 
         // 加载预览
         loadPreview()
@@ -276,6 +273,7 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 prefs.edit().putInt("STYLE", seekBar?.progress ?: 50).apply()
+                refreshAutoWallpaperWorkIfNeeded()
             }
         })
         
@@ -294,7 +292,18 @@ class MainActivity : AppCompatActivity() {
         
         binding.switchDaily.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("DAILY_ENABLED", isChecked).apply()
-            if (isChecked) setupPeriodicWork() else cancelPeriodicWork()
+            if (isChecked) {
+                if (homeState == 0 && lockState == 0) {
+                    Toast.makeText(
+                        this,
+                        "Turn on Home or Lock wallpaper first — auto mode only applies when at least one is on.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                setupPeriodicWork()
+            } else {
+                cancelPeriodicWork()
+            }
         }
         
         // --- 🔥 V27.0 口味选择器监听 ---
@@ -320,26 +329,19 @@ class MainActivity : AppCompatActivity() {
                 // 保存设置
                 prefs.edit().putInt("R18_MODE", r18Mode).apply()
                 
-                // 如果开启了自动刷新，需要更新 Worker 的配置
-                if (binding.switchDaily.isChecked) setupPeriodicWork()
+                refreshAutoWallpaperWorkIfNeeded()
             }
         }
         
         // --- 🚀 V24.0 极速刷新逻辑 ---
         binding.btnUpdate.setOnClickListener {
             bounceAnimate(it)
-            
-            val bufferFile = File(filesDir, "wallpaper_buffer.png")
-            
-            if (bufferFile.exists() && bufferFile.length() > 0) {
-                // ✅ 情况 A：有库存 -> 零延迟秒开！
-                applyBufferToCurrent()
+            val ready = firstReadyPrefetchFile()
+            if (ready != null) {
+                applyPrefetchToHome(ready)
                 Toast.makeText(this, "Instant Load! ⚡", Toast.LENGTH_SHORT).show()
-                
-                // 消耗了库存，立刻补充下一张
-                refillBuffer(isUrgent = false)
+                refillEmptyPrefetchSlots()
             } else {
-                // ❌ 情况 B：没库存 (点太快了或者网太差) -> 走老逻辑 (显示 Loading)
                 startOneTimeWork(isUrgent = true)
             }
         }
@@ -349,6 +351,7 @@ class MainActivity : AppCompatActivity() {
             homeState = (homeState + 1) % 3
             prefs.edit().putInt("HOME_STATE", homeState).apply()
             updateToggleButtons()
+            refreshAutoWallpaperWorkIfNeeded()
             if (homeState > 0) applyCurrentVisibleToTarget(WallpaperManager.FLAG_SYSTEM)
         }
         
@@ -357,6 +360,7 @@ class MainActivity : AppCompatActivity() {
             lockState = (lockState + 1) % 3
             prefs.edit().putInt("LOCK_STATE", lockState).apply()
             updateToggleButtons()
+            refreshAutoWallpaperWorkIfNeeded()
             if (lockState > 0) applyCurrentVisibleToTarget(WallpaperManager.FLAG_LOCK)
         }
         
@@ -374,11 +378,23 @@ class MainActivity : AppCompatActivity() {
         // 3. 首次启动引导
         showWelcomeDialogIfNeeded()
         
-        // 4. 启动看板娘系统（强制问候）
+        // 4. 自动换壁纸：冷启动时必须重新 enqueue，否则 WorkManager 里仍是旧的 InputData（标签/主锁屏状态），且重装/清数据后开关为开时从未注册过任务
+        refreshAutoWallpaperWorkIfNeeded()
+
+        // 5. 启动看板娘系统（强制问候）
         Handler(Looper.getMainLooper()).postDelayed({
             speak("Nyanpasu~ (〃＾▽＾〃) 👋") // 启动首句，带颜文字
             scheduleRandomSpeech() // 启动随机闲聊循环
         }, 800)
+    }
+
+    /**
+     * 自动周期任务（若开启）与预取槽一并刷新，保证 Tag/滑条/R18 变化后后台正在下的图仍是当前偏好。
+     */
+    private fun refreshAutoWallpaperWorkIfNeeded() {
+        if (!this::binding.isInitialized) return
+        if (binding.switchDaily.isChecked) setupPeriodicWork()
+        refillEmptyPrefetchSlots()
     }
 
     // --- 🤖 看板娘智能系统 ---
@@ -558,9 +574,9 @@ class MainActivity : AppCompatActivity() {
         
         if (finalFile != null) {
             val bitmap = BitmapFactory.decodeFile(finalFile.absolutePath)
-            binding.ivPreview.setImageBitmap(bitmap)
+            setPreviewBitmap(bitmap)
         } else {
-            binding.ivPreview.setImageDrawable(null)
+            clearPreviewBitmap()
         }
         
         // ✨✨✨ 颜色同步修复区 ✨✨✨
@@ -623,115 +639,140 @@ class MainActivity : AppCompatActivity() {
         button.setIconResource(icon)
     }
 
-    // --- ⚡ V25.0 修复：将库存搬运到前台 并 同步系统壁纸 ---
-    private fun applyBufferToCurrent() {
-        val bufferFile = File(filesDir, "wallpaper_buffer.png")
-        val homeFile = File(filesDir, "wallpaper_home.png")
-        
-        if (!bufferFile.exists()) return
-        
-        // 1. 备份当前图到历史
-        backupCurrentToHistory()
-        
-        // 2. 搬运文件 (Buffer -> Home)
-        bufferFile.copyTo(homeFile, overwrite = true)
-        
-        // 3. 删除旧库存 (防止重复)
-        bufferFile.delete()
-        
-        // 4. 刷新 App 内预览 (秒开)
-        isPreviewingHome = true
-        loadPreview()
-        
-        // 5. ✨ 关键修复：立即同步到系统壁纸 ✨
-        // 之前这里缺了，导致 App 变了但桌面没变
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val wm = WallpaperManager.getInstance(this@MainActivity)
-                val bitmap = BitmapFactory.decodeFile(homeFile.absolutePath)
-                
-                if (bitmap == null) {
-                    Log.e("MainActivity", "Failed to decode bitmap from buffer")
-                    return@launch
-                }
-                
-                // 设置桌面
-                if (homeState > 0) {
-                    wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                    Log.d("MainActivity", "✅ Home wallpaper applied from buffer")
-                }
-                
-                // 设置锁屏 (如果是同步模式)
-                val isSyncMode = (lockState == 1) || (lockState == 2 && homeState == 2)
-                if (isSyncMode && lockState > 0) {
-                    wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                    
-                    // 顺便把 lock 文件也更新一下，保证一致性
-                    homeFile.copyTo(File(filesDir, "wallpaper_lock.png"), overwrite = true)
-                    Log.d("MainActivity", "✅ Lock wallpaper synced from buffer")
-                }
-                
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Wallpaper sync failed", Toast.LENGTH_SHORT).show()
-                }
+    /** 旧版单文件缓冲迁移到 A 槽，避免已装用户丢「预取图」。 */
+    private fun migrateLegacyPrefetchIfNeeded() {
+        val leg = File(filesDir, FN_LEGACY_BUFFER)
+        if (!leg.exists() || leg.length() == 0L) return
+        val a = File(filesDir, FN_BUFFER_A)
+        if (!a.exists() || a.length() == 0L) {
+            leg.copyTo(a, overwrite = true)
+        }
+        leg.delete()
+    }
+
+    /** 优先取最新写入的预取槽，提高连点刷新时命中「已下好的一张」。 */
+    private fun firstReadyPrefetchFile(): File? {
+        migrateLegacyPrefetchIfNeeded()
+        val ready = listOf(File(filesDir, FN_BUFFER_A), File(filesDir, FN_BUFFER_B))
+            .filter { it.exists() && it.length() > 0 }
+        if (ready.isEmpty()) return null
+        return ready.maxByOrNull { it.lastModified() }
+    }
+
+    /** 对空槽立刻各排一队预取（无 1s 人为延迟）；双槽可并行缩小「秒开 → 要等网」的间隔。 */
+    private fun refillEmptyPrefetchSlots() {
+        migrateLegacyPrefetchIfNeeded()
+        for (slot in listOf("a", "b")) {
+            val f = File(filesDir, if (slot == "b") FN_BUFFER_B else FN_BUFFER_A)
+            if (!f.exists() || f.length() == 0L) {
+                startOneTimeWork(isUrgent = false, prefetchSlot = slot)
             }
         }
     }
 
-    // --- 📦 补充库存 (Refill) ---
-    private fun refillBuffer(isUrgent: Boolean) {
-        if (isRefillingBuffer) return // 正在下，别催
-        isRefillingBuffer = true
-        
-        // 如果不是很急（是后台预加载），为了安全，延迟 1 秒再请求，模拟人类间隔
-        val delay = if (isUrgent) 0L else 1000L
-        
-        Handler(Looper.getMainLooper()).postDelayed({
-            startOneTimeWork(isUrgent = false) // false 表示下载到 Buffer，不更新 UI
-        }, delay)
+    private suspend fun applyWallpaperBitmap(which: Int, bitmap: Bitmap): Boolean {
+        val safe = ImageProcessor.forWallpaperManager(bitmap)
+        return try {
+            withContext(Dispatchers.Main) {
+                if (isFinishing) return@withContext false
+                WallpaperManager.getInstance(this@MainActivity).setBitmap(safe, null, true, which)
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "setBitmap failed which=$which", e)
+            false
+        }
     }
 
-    // --- 🔄 V24.0 修改后的 Worker 启动方法 ---
-    // isUrgent = true: 用户等着看，下载完直接更新 UI (存到 wallpaper_home)
-    // isUrgent = false: 用户在看图，后台悄悄下载 (存到 wallpaper_buffer)
-    private fun startOneTimeWork(isUrgent: Boolean) {
-        if (isUrgent) {
-            binding.progressBar.visibility = View.VISIBLE
-            binding.btnUpdate.isEnabled = false
-            binding.btnUpdate.text = "Summoning... ⌛"
-        } else {
-            // 后台静默下载，界面不转圈，但在 Log 里能看到
-            binding.btnUpdate.text = "Refilling... 📦"
-        }
+    private suspend fun applyHomeLockCombinedOrSplit(bitmap: Bitmap): Boolean {
+        val both = WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
+        if (applyWallpaperBitmap(both, bitmap)) return true
+        val s = applyWallpaperBitmap(WallpaperManager.FLAG_SYSTEM, bitmap)
+        val l = applyWallpaperBitmap(WallpaperManager.FLAG_LOCK, bitmap)
+        return s && l
+    }
 
+    private fun applyPrefetchToHome(prefetch: File) {
+        val homeFile = File(filesDir, "wallpaper_home.png")
+        if (!prefetch.exists() || prefetch.length() == 0L) return
+        backupCurrentToHistory()
+        prefetch.copyTo(homeFile, overwrite = true)
+        prefetch.delete()
+        isPreviewingHome = true
+        loadPreview()
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    BitmapFactory.decodeFile(homeFile.absolutePath)
+                } catch (_: OutOfMemoryError) {
+                    null
+                }
+            }
+            if (bitmap == null) {
+                Log.e("MainActivity", "Failed to decode bitmap from buffer")
+                return@launch
+            }
+            val isSyncMode = (lockState == 1) || (lockState == 2 && homeState == 2)
+            try {
+                if (isSyncMode && lockState > 0) {
+                    withContext(Dispatchers.IO) {
+                        homeFile.copyTo(File(filesDir, "wallpaper_lock.png"), overwrite = true)
+                    }
+                }
+                val ok =
+                    when {
+                        isSyncMode && homeState > 0 && lockState > 0 -> applyHomeLockCombinedOrSplit(bitmap)
+                        homeState > 0 ->
+                            applyWallpaperBitmap(WallpaperManager.FLAG_SYSTEM, bitmap)
+                        isSyncMode && lockState > 0 ->
+                            applyWallpaperBitmap(WallpaperManager.FLAG_LOCK, bitmap)
+                        else -> true
+                    }
+                if (ok) {
+                    Log.d("MainActivity", "Wallpaper applied from prefetch buffer")
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "系统壁纸未更新，请检查是否允许更换壁纸或关闭系统杂志锁屏",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this@MainActivity, "Wallpaper sync failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * @param isUrgent 为 false 时写入 A/B 预取槽，使用唯一任务名并行两条队列；为 true 时直连 wallpaper_home。
+     */
+    private fun startOneTimeWork(isUrgent: Boolean, prefetchSlot: String = "a") {
         val strictTags = tagsMap.filter { it.value }.keys.toTypedArray()
         val softTags = tagsMap.filter { !it.value }.keys.toTypedArray()
-
         val inputData = workDataOf(
             "STYLE_VALUE" to binding.seekBarStyle.progress,
             "STRICT_TAGS" to strictTags,
             "SOFT_TAGS" to softTags,
             "HOME_STATE" to homeState,
             "LOCK_STATE" to lockState,
-            "R18_MODE" to r18Mode, // ✨ V27.0 口味模式参数
-            "IS_URGENT" to isUrgent // ✨ 告诉 Worker 是急单还是库存单
+            "R18_MODE" to r18Mode,
+            "IS_URGENT" to isUrgent,
+            "BUFFER_SLOT" to prefetchSlot,
         )
 
-        val request = OneTimeWorkRequestBuilder<WallpaperWorker>()
-            .setInputData(inputData)
-            .build()
-
-        WorkManager.getInstance(this).enqueue(request)
-
-        WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id)
-            .observe(this) { workInfo ->
-                if (workInfo != null && workInfo.state.isFinished) {
-                    isRefillingBuffer = false // 任务结束
-                    
-                    if (isUrgent) {
-                        // 急单：恢复按钮，刷新 UI
+        if (isUrgent) {
+            binding.progressBar.visibility = View.VISIBLE
+            binding.btnUpdate.isEnabled = false
+            binding.btnUpdate.text = "Summoning... ⌛"
+            val request = OneTimeWorkRequestBuilder<WallpaperWorker>()
+                .setInputData(inputData)
+                .build()
+            WorkManager.getInstance(this).enqueue(request)
+            WorkManager.getInstance(this).getWorkInfoByIdLiveData(request.id)
+                .observe(this) { workInfo ->
+                    if (isFinishing) return@observe
+                    if (workInfo != null && workInfo.state.isFinished) {
                         binding.progressBar.visibility = View.GONE
                         binding.btnUpdate.isEnabled = true
                         binding.btnUpdate.text = "Refresh ✨"
@@ -739,23 +780,32 @@ class MainActivity : AppCompatActivity() {
                             isPreviewingHome = true
                             loadPreview()
                             Toast.makeText(this, "New wallpaper applied! ✨", Toast.LENGTH_SHORT).show()
-                            // 急单完成后，顺便再启动一个预加载，保证下次是秒开
-                            refillBuffer(false)
+                            refillEmptyPrefetchSlots()
                         } else {
-                            Toast.makeText(this, "Network error. Check your connection and try again~", Toast.LENGTH_LONG).show()
+                            Toast.makeText(
+                                this,
+                                "下载失败或系统拒绝设置壁纸。请检查网络、更换壁纸权限；华为等机型请关闭杂志锁屏。",
+                                Toast.LENGTH_LONG,
+                            ).show()
                         }
-                    } else {
-                        // 库存单：悄悄恢复按钮文字即可，不刷新 UI
-                        binding.btnUpdate.text = "Refresh ✨"
-                        // 此时 wallpaper_buffer.png 已经就位
                     }
                 }
-            }
+        } else {
+            val request = OneTimeWorkRequestBuilder<WallpaperWorker>()
+                .setInputData(inputData)
+                .build()
+            WorkManager.getInstance(this).enqueueUniqueWork(
+                "prefetch_wallpaper_$prefetchSlot",
+                ExistingWorkPolicy.REPLACE,
+                request,
+            )
+        }
     }
     
     private fun saveTagsToPrefs() {
         val set = tagsMap.map { "${it.key}|${it.value}" }.toSet()
         getSharedPreferences("ACG_PREFS", Context.MODE_PRIVATE).edit().putStringSet("SAVED_TAGS_V2", set).apply()
+        refreshAutoWallpaperWorkIfNeeded()
     }
     
     private fun addChipToGroup(tagText: String, isStrict: Boolean) {
@@ -875,41 +925,45 @@ class MainActivity : AppCompatActivity() {
     // --- 🖼️ V22.0 修复：全屏强制适配 ---
     private fun applyCurrentVisibleToTarget(flag: Int) {
         val photoView = binding.ivPreview
-        val drawable = photoView.drawable ?: return
+        if (photoView.drawable == null) return
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
             try {
-                // 1. 获取裁剪后的 Bitmap (用户看到的区域)
-                val croppedBitmap = getVisibleBitmap(photoView)
-                
-                if (croppedBitmap != null) {
-                    // 2. ✨ 关键修复：获取屏幕真实分辨率
-                    val displayMetrics = resources.displayMetrics
-                    val screenWidth = displayMetrics.widthPixels
-                    val screenHeight = displayMetrics.heightPixels
-
-                    // 3. ✨ 关键修复：强制缩放到全屏尺寸
-                    // 这能消除所有黑边，确保壁纸严丝合缝
-                    val finalBitmap = Bitmap.createScaledBitmap(
-                        croppedBitmap, 
-                        screenWidth, 
-                        screenHeight, 
-                        true // filter=true 保证缩放平滑清晰
-                    )
-
-                    val wm = WallpaperManager.getInstance(this@MainActivity)
-                    wm.setBitmap(finalBitmap, null, true, flag)
-                    
-                    withContext(Dispatchers.Main) {
-                        val target = if (flag == WallpaperManager.FLAG_SYSTEM) "Home" else "Lock"
-                        Toast.makeText(this@MainActivity, "$target Updated! (Perfect Fit) ✨", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
+                val croppedBitmap = withContext(Dispatchers.Main) {
+                    getVisibleBitmap(photoView)
+                }
+                if (croppedBitmap == null) {
                     fallbackApplyFromFile(flag)
+                    return@launch
+                }
+                val displayMetrics = resources.displayMetrics
+                val finalBitmap = withContext(Dispatchers.Default) {
+                    Bitmap.createScaledBitmap(
+                        croppedBitmap,
+                        displayMetrics.widthPixels,
+                        displayMetrics.heightPixels,
+                        true
+                    ).also { scaled ->
+                        if (scaled !== croppedBitmap) croppedBitmap.recycle()
+                    }
+                }
+                val ok = applyWallpaperBitmap(flag, finalBitmap)
+                withContext(Dispatchers.Main) {
+                    val target = if (flag == WallpaperManager.FLAG_SYSTEM) "Home" else "Lock"
+                    if (ok) {
+                        Toast.makeText(this@MainActivity, "$target Updated! (Perfect Fit) ✨", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "未能写入系统壁纸（$target），请检查权限或杂志锁屏设置",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        fallbackApplyFromFile(flag)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                withContext(Dispatchers.Main) { fallbackApplyFromFile(flag) }
+                fallbackApplyFromFile(flag)
             }
         }
     }
@@ -917,7 +971,7 @@ class MainActivity : AppCompatActivity() {
     // ✨ 魔法方法：从 PhotoView 提取当前可见区域
     private fun getVisibleBitmap(photoView: PhotoView): Bitmap? {
         val drawable = photoView.drawable ?: return null
-        val originalBitmap = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return null
+        val originalBitmap = (drawable as? BitmapDrawable)?.bitmap ?: return null
         
         try {
             // 获取显示矩阵（图片在 View 中的实际位置）
@@ -967,20 +1021,44 @@ class MainActivity : AppCompatActivity() {
         
         if (!finalFile.exists()) return
         
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                BitmapFactory.decodeFile(finalFile.absolutePath)
+            } ?: return@launch
             try {
-                val bitmap = BitmapFactory.decodeFile(finalFile.absolutePath)
-                val wm = WallpaperManager.getInstance(this@MainActivity)
-                wm.setBitmap(bitmap, null, true, flag)
-                
+                val ok = applyWallpaperBitmap(flag, bitmap)
                 withContext(Dispatchers.Main) {
                     val target = if (flag == WallpaperManager.FLAG_SYSTEM) "Home" else "Lock"
-                    Toast.makeText(this@MainActivity, "$target wallpaper applied! ✨", Toast.LENGTH_SHORT).show()
+                    if (ok) {
+                        Toast.makeText(this@MainActivity, "$target wallpaper applied! ✨", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "无法设置 $target 壁纸，请查看系统是否限制第三方应用",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
+    }
+
+    private fun setPreviewBitmap(bitmap: Bitmap?) {
+        if (bitmap == null) {
+            clearPreviewBitmap()
+            return
+        }
+        val old = (binding.ivPreview.drawable as? BitmapDrawable)?.bitmap
+        binding.ivPreview.setImageBitmap(bitmap)
+        if (old != null && old !== bitmap && !old.isRecycled) old.recycle()
+    }
+
+    private fun clearPreviewBitmap() {
+        val old = (binding.ivPreview.drawable as? BitmapDrawable)?.bitmap
+        binding.ivPreview.setImageDrawable(null)
+        if (old != null && !old.isRecycled) old.recycle()
     }
     
     private fun showScheduleDialog() {
@@ -1004,28 +1082,53 @@ class MainActivity : AppCompatActivity() {
          val softTags = tagsMap.filter { !it.value }.keys.toTypedArray()
          val scheduleIndex = prefs.getInt("SCHEDULE_INDEX", 0)
          val scheduleValues = intArrayOf(-1, 6, 12, 24)
+         val constraints = Constraints.Builder()
+             .setRequiredNetworkType(NetworkType.CONNECTED)
+             .build()
          val inputData = workDataOf(
              "STYLE_VALUE" to style,
              "STRICT_TAGS" to strictTags,
              "SOFT_TAGS" to softTags,
              "HOME_STATE" to homeState,
              "LOCK_STATE" to lockState,
-             "R18_MODE" to r18Mode // ✨ V27.0 口味模式参数
+             "R18_MODE" to r18Mode,
+             "IS_URGENT" to true
          )
          val requestBuilder = if (scheduleIndex == 0) {
+             val delayMs = millisUntilNextClock(7, 0)
              PeriodicWorkRequestBuilder<WallpaperWorker>(24, TimeUnit.HOURS)
-                 .setInitialDelay(1, TimeUnit.HOURS)
+                 .setConstraints(constraints)
+                 .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
          } else {
              PeriodicWorkRequestBuilder<WallpaperWorker>(
                  scheduleValues[scheduleIndex].toLong(),
                  TimeUnit.HOURS
-             )
+             ).setConstraints(constraints)
          }
          WorkManager.getInstance(this).enqueueUniquePeriodicWork(
              "AUTO_JOB",
              ExistingPeriodicWorkPolicy.UPDATE,
              requestBuilder.setInputData(inputData).addTag("AUTO_WALLPAPER").build()
          )
+    }
+
+    /**
+     * 距离下一次本地 [hourOfDay]:[minute] 的毫秒数（至少 1 分钟），用于「每日」首次执行时间。
+     * 说明：PeriodicWork 后续间隔仍为约 24 小时，受系统电量策略影响可能略有漂移。
+     */
+    private fun millisUntilNextClock(hourOfDay: Int, minute: Int): Long {
+        val now = Calendar.getInstance()
+        val next = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hourOfDay)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        if (!next.after(now)) {
+            next.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        val delta = next.timeInMillis - now.timeInMillis
+        return delta.coerceAtLeast(TimeUnit.MINUTES.toMillis(1))
     }
     
     private fun cancelPeriodicWork() {
@@ -1125,10 +1228,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    override fun onResume() {
+        super.onResume()
+        if (this::binding.isInitialized) {
+            migrateLegacyPrefetchIfNeeded()
+            refillEmptyPrefetchSlots()
+        }
+    }
+
     override fun onDestroy() {
-        super.onDestroy()
-        // 清理Handler防止内存泄漏
+        clearPreviewBitmap()
         speechHandler.removeCallbacksAndMessages(null)
         logoResetHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 }

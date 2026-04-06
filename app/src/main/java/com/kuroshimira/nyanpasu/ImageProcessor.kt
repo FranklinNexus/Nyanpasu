@@ -5,9 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
-import android.util.DisplayMetrics
-import android.view.WindowManager
-
 /**
  * 🖼️ 图片处理工具类
  * 轻量级图片适配，用于将任意尺寸的图片适配到设备屏幕
@@ -67,5 +64,15 @@ object ImageProcessor {
         canvas.drawBitmap(originalBitmap, matrix, paint)
 
         return targetBitmap
+    }
+
+    /**
+     * OEM / 系统对 [WallpaperManager.setBitmap] 偶发只接受软件 ARGB；解码或 Coil 偶发 HARDWARE。
+     */
+    fun forWallpaperManager(bitmap: Bitmap): Bitmap {
+        if (bitmap.config != Bitmap.Config.HARDWARE) return bitmap
+        return bitmap.copy(Bitmap.Config.ARGB_8888, true).also {
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
     }
 }

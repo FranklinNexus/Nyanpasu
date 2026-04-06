@@ -60,9 +60,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
-    // 我们的三大金刚
-    implementation("org.jsoup:jsoup:1.15.4")
     implementation("io.coil-kt:coil:2.4.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.8.1")
     
     // 📸 PhotoView: 图片手势拖拽和缩放

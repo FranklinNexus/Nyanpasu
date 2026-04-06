@@ -27,10 +27,8 @@
 # --- Keep Coil Image Loading Library ---
 -dontwarn coil.**
 -keep class coil.** { *; }
-
-# --- Keep Jsoup HTML Parser ---
--dontwarn org.jsoup.**
--keep class org.jsoup.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
 
 # --- Keep PhotoView Library ---
 -keep class com.github.chrisbanes.photoview.** { *; }
