@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 
 /**
  * Coil 拉 Pixiv 镜像图时常需 Referer，否则会 403。
- * 默认 OkHttp 读超时较短，壁纸原图在弱网/VPN 下易读超时；这里显式拉长并统一浏览器 UA。
+ * 统一浏览器 UA；超时取「略宽裕但快速失败」——过长会导致失败一次等几分钟。
  */
 object NetworkImageLoader {
 
@@ -19,10 +19,10 @@ object NetworkImageLoader {
     fun forApp(context: Context): ImageLoader {
         val client =
             OkHttpClient.Builder()
-                .connectTimeout(25, TimeUnit.SECONDS)
-                .readTimeout(90, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .callTimeout(120, TimeUnit.SECONDS)
+                .connectTimeout(12, TimeUnit.SECONDS)
+                .readTimeout(28, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .callTimeout(40, TimeUnit.SECONDS)
                 .addInterceptor(
                     Interceptor { chain ->
                         var req = chain.request()

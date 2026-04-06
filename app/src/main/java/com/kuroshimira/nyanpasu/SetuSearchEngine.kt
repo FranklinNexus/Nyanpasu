@@ -327,12 +327,12 @@ internal object SetuSearchEngine {
         val profileLadder = buildProfileLadder(sliderAllowed)
 
         // Tier 1 — 严格遵循当前模式的 Lolicon r18（0/1/2），Tag 变体 × 体型阶梯
-        firstNonEmpty(ctx, primaryR18, variants, profileLadder, last, preferFresh = true, attemptsPerCell = 3)
+        firstNonEmpty(ctx, primaryR18, variants, profileLadder, last, preferFresh = true, attemptsPerCell = 2)
             ?.let { return it }
 
         // Tier 2 — NSFW/MIX 下可酌情抬高 Lolicon r18；PURE 绝不抬高
         for (r18 in R18Policy.tierEscalations(primaryR18)) {
-            firstNonEmpty(ctx, r18, variants, profileLadder, last, preferFresh = true, attemptsPerCell = 2)
+            firstNonEmpty(ctx, r18, variants, profileLadder, last, preferFresh = true, attemptsPerCell = 1)
                 ?.let { return it }
         }
 
@@ -395,7 +395,7 @@ internal object SetuSearchEngine {
                         Log.d(TAG, "hit r18=$r18 variant=$variant profile=$profile")
                         return url
                     }
-                    delay(80)
+                    delay(24)
                 }
             }
         }
@@ -406,7 +406,7 @@ internal object SetuSearchEngine {
         val chain = R18Policy.fallbackLoliconChain(primaryR18)
         for (r18 in chain) {
             for (relaxed in listOf(false, true)) {
-                repeat(6) {
+                repeat(2) {
                     val url = buildAndFetch(
                         emptyList(),
                         ctx.softTags,
@@ -417,11 +417,11 @@ internal object SetuSearchEngine {
                         ctx.strictTags,
                     )
                     if (accept(url, last, preferFresh = true)) return url
-                    delay(45)
+                    delay(18)
                 }
             }
             for (relaxed in listOf(false, true)) {
-                repeat(3) {
+                repeat(1) {
                     val url = buildAndFetch(
                         emptyList(),
                         ctx.softTags,
@@ -432,7 +432,7 @@ internal object SetuSearchEngine {
                         ctx.strictTags,
                     )
                     if (url.isNotEmpty()) return url
-                    delay(40)
+                    delay(18)
                 }
             }
         }
@@ -443,7 +443,7 @@ internal object SetuSearchEngine {
         val chain = R18Policy.fallbackLoliconChain(primaryR18)
         for (r18 in chain) {
             for (relaxed in listOf(false, true)) {
-                repeat(5) {
+                repeat(2) {
                     val url = buildAndFetch(
                         emptyList(),
                         ctx.softTags,
@@ -454,10 +454,10 @@ internal object SetuSearchEngine {
                         ctx.strictTags,
                     )
                     if (url.isNotEmpty()) return url
-                    delay(40)
+                    delay(18)
                 }
             }
-            repeat(3) {
+            repeat(1) {
                 val url = buildAndFetch(
                     emptyList(),
                     ctx.softTags,
@@ -468,7 +468,7 @@ internal object SetuSearchEngine {
                     ctx.strictTags,
                 )
                 if (url.isNotEmpty()) return url
-                delay(40)
+                delay(18)
             }
             repeat(2) {
                 val url = fetchBare(r18)
@@ -590,6 +590,7 @@ internal object SetuSearchEngine {
         }
         if (loliconUrl.isNotEmpty()) return loliconUrl
 
+        // Danbooru：两档即可（Pixiv 优先 + 放宽 compact），避免单次 build 内四轮各等超时
         var dan = fetchDanbooruPixiv(
             primaryTags,
             softTags,
@@ -601,32 +602,6 @@ internal object SetuSearchEngine {
             requirePixivId = true,
             compactTags = false,
         )
-        if (dan.isEmpty()) {
-            dan = fetchDanbooruPixiv(
-                primaryTags,
-                softTags,
-                styleValue,
-                r18Mode,
-                useSlider,
-                sliderRelaxed,
-                intentSourceTags,
-                requirePixivId = false,
-                compactTags = false,
-            )
-        }
-        if (dan.isEmpty()) {
-            dan = fetchDanbooruPixiv(
-                primaryTags,
-                softTags,
-                styleValue,
-                r18Mode,
-                useSlider,
-                sliderRelaxed,
-                intentSourceTags,
-                requirePixivId = true,
-                compactTags = true,
-            )
-        }
         if (dan.isEmpty()) {
             dan = fetchDanbooruPixiv(
                 primaryTags,
@@ -684,8 +659,8 @@ internal object SetuSearchEngine {
         return try {
             conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 6500
-                readTimeout = 6500
+                connectTimeout = 5000
+                readTimeout = 5000
                 setRequestProperty("User-Agent", "Nyanpasu/1.0 (Pixiv wallpaper; +Android)")
             }
             if (conn.responseCode != HttpURLConnection.HTTP_OK) return ""
@@ -846,8 +821,8 @@ internal object SetuSearchEngine {
                 val urlStr = "$endpoint?limit=20&tags=${encode(tags.trim())}"
                 conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 7500
-                    readTimeout = 7500
+                    connectTimeout = 5000
+                    readTimeout = 5000
                     setRequestProperty("User-Agent", ua)
                 }
                 if (conn.responseCode != HttpURLConnection.HTTP_OK) continue
@@ -910,8 +885,8 @@ internal object SetuSearchEngine {
                 val urlStr = "$SAFEBOORU_INDEX&tags=${encode(tag)}&limit=20"
                 conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 6000
-                    readTimeout = 6000
+                    connectTimeout = 5000
+                    readTimeout = 5000
                     setRequestProperty("User-Agent", "Nyanpasu/1.0 (Pixiv wallpaper; +Android)")
                 }
                 if (conn.responseCode != HttpURLConnection.HTTP_OK) {
@@ -985,8 +960,8 @@ internal object SetuSearchEngine {
         return try {
             conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 7000
-                readTimeout = 7000
+                connectTimeout = 5000
+                readTimeout = 5000
                 setRequestProperty("User-Agent", "Nyanpasu/1.0 (Pixiv wallpaper; +Android)")
             }
             if (conn.responseCode != HttpURLConnection.HTTP_OK) return ""

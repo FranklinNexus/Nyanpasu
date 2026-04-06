@@ -44,12 +44,13 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
     companion object {
 
-        /** 图源多源串行重试无上限时可能卡数分钟；超时会失败并收起主界面加载状态。 */
-        private const val SEARCH_TIMEOUT_HOME_MS = 150_000L
-        private const val SEARCH_TIMEOUT_LOCK_MS = 90_000L
+        /** 图源链有界；过大会让「一直 Summoning」体感像死锁。 */
+        private const val SEARCH_TIMEOUT_HOME_MS = 90_000L
+        private const val SEARCH_TIMEOUT_LOCK_MS = 60_000L
 
-        private const val DOWNLOAD_RETRY = 3
-        private const val DOWNLOAD_RETRY_DELAY_MS = 1_200L
+        /** 失败时短间隔少次重试；配合较短 OkHttp 超时，避免单次刷新华几分钟。 */
+        private const val DOWNLOAD_RETRY = 2
+        private const val DOWNLOAD_RETRY_DELAY_MS = 400L
 
         @Volatile
 
