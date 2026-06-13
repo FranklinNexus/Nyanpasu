@@ -2,7 +2,6 @@ package com.kuroshimira.nyanpasu.work
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.work.Data
 import com.kuroshimira.nyanpasu.search.SetuSearchEngine
@@ -60,7 +59,7 @@ object WallpaperJobRunner {
         if (homeRequired) {
             homeUrl = try {
                 withTimeout(SEARCH_TIMEOUT_HOME_MS) {
-                    SetuSearchEngine.search(searchCtx, r18Mode)
+                    SetuSearchEngine.search(context, searchCtx, r18Mode)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -76,7 +75,7 @@ object WallpaperJobRunner {
         } else if (lockState > 0) {
             homeUrl = try {
                 withTimeout(SEARCH_TIMEOUT_HOME_MS) {
-                    SetuSearchEngine.search(searchCtx, r18Mode)
+                    SetuSearchEngine.search(context, searchCtx, r18Mode)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -95,36 +94,10 @@ object WallpaperJobRunner {
 
         var lockUrl = ""
         var lockSearchFailed = false
-        if (isUrgent && homeRequired && !sync && lockState == 2) {
-            val lockCtx = searchCtx.copy(recentUrls = searchCtx.recentUrls + homeUrl)
-            lockUrl = try {
-                withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
-                    SetuSearchEngine.search(lockCtx, r18Mode)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: TimeoutCancellationException) {
-                Log.e(TAG, "Setu search (lock) timed out")
-                lockSearchFailed = true
-                ""
-            }
-
-            if (lockUrl.isEmpty()) {
-                lockSearchFailed = true
-            } else if (lockUrl == homeUrl) {
-                lockUrl = try {
-                    withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
-                        SetuSearchEngine.searchDistinct(lockCtx, r18Mode, homeUrl)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: TimeoutCancellationException) {
-                    Log.e(TAG, "Setu searchDistinct timed out")
-                    lockSearchFailed = true
-                    ""
-                }
-                if (lockUrl.isEmpty()) lockSearchFailed = true
-            }
+        if (needsIndependentLockWallpaper(isUrgent, homeRequired, sync, lockState)) {
+            val resolved = resolveIndependentLockUrl(context, searchCtx, r18Mode, homeUrl)
+            lockUrl = resolved.first
+            lockSearchFailed = resolved.second
         }
 
         val homeBitmap = downloadBitmap(homeUrl)
@@ -139,7 +112,7 @@ object WallpaperJobRunner {
             }
         var lockBitmapForApply: Bitmap? = null
         var lockDownloadFailed = false
-        if (isUrgent && !sync && lockState == 2) {
+        if (needsIndependentLockWallpaper(isUrgent, homeRequired, sync, lockState)) {
             if (homeRequired) {
                 if (lockUrl.isNotEmpty()) {
                     val lockBmp = downloadBitmap(lockUrl)
@@ -147,14 +120,6 @@ object WallpaperJobRunner {
                         lockBitmapForApply = ImageProcessor.centerCrop(context, lockBmp, recycleSource = true)
                     } else {
                         lockDownloadFailed = true
-                    }
-                }
-                if (lockBitmapForApply == null) {
-                    lockBitmapForApply = decodeExistingLockBitmap(context)
-                    if (lockBitmapForApply != null) {
-                        Log.d(TAG, "Reusing existing lock file for apply")
-                        lockDownloadFailed = false
-                        lockSearchFailed = false
                     }
                 }
             } else {
@@ -175,6 +140,9 @@ object WallpaperJobRunner {
 
             if (isUrgent) {
                 WallpaperPrefs.appendRecentFetchedUrl(prefs, homeUrl)
+                if (lockUrl.isNotEmpty()) {
+                    WallpaperPrefs.appendRecentFetchedUrl(prefs, lockUrl)
+                }
             }
 
             if (!isUrgent) {
@@ -246,11 +214,49 @@ object WallpaperJobRunner {
         }
     }
 
-    private fun decodeExistingLockBitmap(context: Context): Bitmap? {
-        val lockFile = WallpaperFiles.lockFile(context)
-        if (!lockFile.exists() || lockFile.length() == 0L) return null
-        val raw = BitmapFactory.decodeFile(lockFile.absolutePath) ?: return null
-        return ImageProcessor.centerCrop(context, raw, recycleSource = true)
+    private fun needsIndependentLockWallpaper(
+        isUrgent: Boolean,
+        homeRequired: Boolean,
+        sync: Boolean,
+        lockState: Int,
+    ): Boolean = isUrgent && !sync && lockState == 2 && (homeRequired || lockState > 0)
+
+    private suspend fun resolveIndependentLockUrl(
+        context: Context,
+        searchCtx: SetuSearchEngine.Context,
+        r18Mode: Int,
+        homeUrl: String,
+    ): Pair<String, Boolean> {
+        val lockCtx = searchCtx.copy(recentUrls = searchCtx.recentUrls + homeUrl)
+        var lockUrl = try {
+            withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
+                SetuSearchEngine.search(context, lockCtx, r18Mode)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: TimeoutCancellationException) {
+            Log.e(TAG, "Setu search (lock) timed out")
+            ""
+        }
+
+        if (lockUrl.isEmpty() || lockUrl == homeUrl) {
+            lockUrl = try {
+                withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
+                    SetuSearchEngine.searchDistinct(context, lockCtx, r18Mode, homeUrl)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: TimeoutCancellationException) {
+                Log.e(TAG, "Setu searchDistinct timed out")
+                ""
+            }
+        }
+
+        if (lockUrl.isEmpty() || lockUrl == homeUrl) {
+            Log.w(TAG, "Independent lock: no distinct URL (home=$homeUrl lock=$lockUrl)")
+            return "" to true
+        }
+        return lockUrl to false
     }
 }
 

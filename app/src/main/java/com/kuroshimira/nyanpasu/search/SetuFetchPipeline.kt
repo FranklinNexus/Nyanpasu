@@ -1,5 +1,7 @@
 package com.kuroshimira.nyanpasu.search
 
+import com.kuroshimira.nyanpasu.network.NetworkRoute
+
 /** Lolicon → Danbooru → Booru 池的串联编排。 */
 internal object SetuFetchPipeline {
 
@@ -11,6 +13,7 @@ internal object SetuFetchPipeline {
         useSlider: Boolean,
         sliderRelaxed: Boolean,
         intentSourceTags: Array<String>,
+        route: NetworkRoute = NetworkRoute.NORMAL,
         attachSoftTag: Boolean = false,
     ): String {
         val loliconUrl =
@@ -22,6 +25,7 @@ internal object SetuFetchPipeline {
                 useSlider,
                 sliderRelaxed,
                 intentSourceTags,
+                route,
                 attachSoftTag,
             )
         if (loliconUrl.isNotEmpty()) return loliconUrl
@@ -62,8 +66,8 @@ internal object SetuFetchPipeline {
         return dan
     }
 
-    suspend fun fetchBare(r18Mode: Int): String {
-        var url = LoliconSearchClient.fetchBare(r18Mode)
+    suspend fun fetchBare(r18Mode: Int, route: NetworkRoute = NetworkRoute.NORMAL): String {
+        var url = LoliconSearchClient.fetchBare(r18Mode, route)
         if (url.isEmpty()) {
             url = DanbooruSearchClient.fetchBooruPool(emptyList(), emptyArray(), r18Mode)
         }

@@ -13,27 +13,31 @@ object PixivIllustResolver {
     private const val TAG = "PixivIllustResolver"
     private const val AJAX = "https://www.pixiv.net/ajax/illust/"
 
-    /** 镜像线路：与主站 Ajax 互补，提高 Pixiv 图源命中率。 */
     private val MIRROR_TEMPLATES = listOf(
         "https://pixiv.cat/%d.jpg",
         "https://pixiv.cat/%d@master1200.jpg",
     )
 
-    /**
-     * @param pixivId Danbooru / Lolicon 元数据中的 Pixiv 作品 ID
-     * @param fallback 解析失败时返回的原 URL（如 Danbooru file_url）
-     */
-    suspend fun bestImageUrl(pixivId: Long, fallback: String = ""): String {
+    suspend fun bestImageUrl(
+        pixivId: Long,
+        fallback: String = "",
+        preferMirrorFirst: Boolean = false,
+    ): String {
         if (pixivId <= 0L) return fallback
-        resolveViaAjax(pixivId)?.let { return it }
-        resolveViaMirror(pixivId)?.let { return it }
+        if (preferMirrorFirst) {
+            resolveViaMirror(pixivId)?.let { return it }
+            resolveViaAjax(pixivId)?.let { return it }
+        } else {
+            resolveViaAjax(pixivId)?.let { return it }
+            resolveViaMirror(pixivId)?.let { return it }
+        }
         return fallback
     }
 
     private suspend fun resolveViaAjax(pixivId: Long): String? {
         return try {
             val text =
-                AppHttpClient.getString(
+                AppHttpClient.getStringResilient(
                     "$AJAX$pixivId",
                     mapOf("Accept" to "application/json"),
                 ) ?: return null

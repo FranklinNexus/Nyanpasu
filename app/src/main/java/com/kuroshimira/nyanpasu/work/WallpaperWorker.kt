@@ -25,8 +25,8 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
     CoroutineWorker(appContext, workerParams) {
 
     companion object {
-        private const val DOWNLOAD_RETRY = 2
-        private const val DOWNLOAD_RETRY_DELAY_MS = 400L
+        private const val DOWNLOAD_RETRY = 4
+        private const val DOWNLOAD_RETRY_DELAY_MS = 600L
         private const val TAG = "WallpaperWorker"
 
         @Volatile
@@ -78,8 +78,8 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
             return Result.retry()
         }
 
-        if ((isAuto || isUrgent) && !NetworkStatus.isConnected(applicationContext)) {
-            Log.w(TAG, "Skipped: no network")
+        if ((isAuto || isUrgent) && !NetworkStatus.shouldAttemptNetworkWork(applicationContext)) {
+            Log.w(TAG, "Skipped: no usable network")
             if (isAuto) {
                 AutoUpdateNotifier.recordFailure(applicationContext)
                 return Result.retry()

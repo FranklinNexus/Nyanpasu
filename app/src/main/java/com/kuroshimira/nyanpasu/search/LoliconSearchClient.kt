@@ -2,6 +2,8 @@ package com.kuroshimira.nyanpasu.search
 
 import android.util.Log
 import com.kuroshimira.nyanpasu.network.AppHttpClient
+import com.kuroshimira.nyanpasu.network.NetworkEnvironment
+import com.kuroshimira.nyanpasu.network.NetworkRoute
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
 import java.net.URLEncoder
 import kotlin.random.Random
@@ -11,11 +13,6 @@ import org.json.JSONObject
 /** Lolicon /setu/v2 多镜像拉取。 */
 internal object LoliconSearchClient {
 
-    private val MIRRORS =
-        listOf(
-            "https://api.lolicon.app/setu/v2",
-            "https://api.yetal.ml/setu/v2",
-        )
     private const val NUM = 16
     private const val TAG = "SetuSearch"
 
@@ -27,6 +24,7 @@ internal object LoliconSearchClient {
         useSlider: Boolean,
         sliderRelaxed: Boolean,
         intentSourceTags: Array<String>,
+        route: NetworkRoute = NetworkRoute.NORMAL,
         attachSoftTag: Boolean = false,
     ): String {
         val intentBlobLower = SearchScoring.intentBlob(intentSourceTags, primaryTags)
@@ -47,6 +45,7 @@ internal object LoliconSearchClient {
                 ),
                 intentBlobLower,
                 dropR18Items,
+                route,
             )
 
         return if (primaryTags.isNotEmpty()) {
@@ -62,7 +61,7 @@ internal object LoliconSearchClient {
         }
     }
 
-    suspend fun fetchBare(r18Mode: Int): String {
+    suspend fun fetchBare(r18Mode: Int, route: NetworkRoute = NetworkRoute.NORMAL): String {
         val path =
             buildPath(
                 primaryTags = emptyList(),
@@ -74,7 +73,7 @@ internal object LoliconSearchClient {
                 withAspectRatio = false,
                 withExcludeAi = true,
             )
-        return fetchPath(path, "", SearchR18Policy.skipLoliconItemsMarkedR18(r18Mode))
+        return fetchPath(path, "", SearchR18Policy.skipLoliconItemsMarkedR18(r18Mode), route)
     }
 
     private fun buildPath(
@@ -126,11 +125,12 @@ internal object LoliconSearchClient {
         queryPath: String,
         intentBlobLower: String,
         dropMarkedR18: Boolean,
+        route: NetworkRoute,
     ): String {
-        for (base in MIRRORS) {
-            val hit = fetchJson(base + queryPath, intentBlobLower, dropMarkedR18)
+        for (base in NetworkEnvironment.loliconMirrorOrder(route)) {
+            val hit = fetchJson(base + queryPath, intentBlobLower, dropMarkedR18, route)
             if (hit.isNotEmpty()) {
-                Log.d(TAG, "lolicon mirror: $base")
+                Log.d(TAG, "lolicon mirror: $base route=${NetworkEnvironment.logLabel(route)}")
                 return hit
             }
         }
@@ -141,11 +141,12 @@ internal object LoliconSearchClient {
         urlString: String,
         intentBlobLower: String,
         dropMarkedR18: Boolean,
+        route: NetworkRoute,
     ): String {
         return try {
-            val response = AppHttpClient.getString(urlString) ?: return ""
+            val response = AppHttpClient.getStringResilient(urlString) ?: return ""
             val dataArray = JSONObject(response).optJSONArray("data") ?: return ""
-            pickRegularUrl(dataArray, intentBlobLower, dropMarkedR18)
+            pickRegularUrl(dataArray, intentBlobLower, dropMarkedR18, route)
         } catch (e: Exception) {
             Log.e(TAG, "lolicon: ${e.message}")
             ""
@@ -156,6 +157,7 @@ internal object LoliconSearchClient {
         dataArray: JSONArray,
         intentBlobLower: String,
         dropMarkedR18: Boolean,
+        route: NetworkRoute,
     ): String {
         if (dataArray.length() == 0) return ""
         val entries = ArrayList<Pair<JSONObject, Int>>(dataArray.length())
@@ -172,22 +174,23 @@ internal object LoliconSearchClient {
         if (entries.isEmpty()) return ""
         if (relevance) {
             entries.filter { it.second >= 1 }.takeIf { it.isNotEmpty() }?.let {
-                return chosenUrl(it[Random.nextInt(it.size)].first)
+                return chosenUrl(it[Random.nextInt(it.size)].first, route)
             }
             entries.filter { it.second >= 0 }.takeIf { it.isNotEmpty() }?.let {
                 Log.d(TAG, "lolicon niche soft-pick")
-                return chosenUrl(it[Random.nextInt(it.size)].first)
+                return chosenUrl(it[Random.nextInt(it.size)].first, route)
             }
             Log.w(TAG, "lolicon niche last-resort random")
-            return chosenUrl(entries[Random.nextInt(entries.size)].first)
+            return chosenUrl(entries[Random.nextInt(entries.size)].first, route)
         }
-        return chosenUrl(entries[Random.nextInt(entries.size)].first)
+        return chosenUrl(entries[Random.nextInt(entries.size)].first, route)
     }
 
-    private suspend fun chosenUrl(chosen: JSONObject): String {
+    private suspend fun chosenUrl(chosen: JSONObject, route: NetworkRoute): String {
         val reg = chosen.getJSONObject("urls").getString("regular")
         val pid = chosen.optLong("pid", 0L)
-        return PixivIllustResolver.bestImageUrl(pid, reg)
+        val preferMirror = NetworkEnvironment.preferPixivMirrorFirst(route)
+        return PixivIllustResolver.bestImageUrl(pid, reg, preferMirrorFirst = preferMirror)
     }
 
     private fun joinTags(tags: JSONArray?): String {

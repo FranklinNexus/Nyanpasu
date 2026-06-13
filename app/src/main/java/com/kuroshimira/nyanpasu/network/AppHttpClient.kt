@@ -3,13 +3,15 @@ package com.kuroshimira.nyanpasu.network
 import android.util.Log
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * 全应用共享 OkHttp：JSON API 与图片下载共用 UA / Pixiv Referer 规则，超时按用途区分。
+ * 全应用共享 OkHttp：JSON API 与图片下载共用 UA / Pixiv Referer 规则。
+ * 搜索 API 带重试；弱网环境下由 [NetworkEnvironment] 调整镜像顺序。
  */
 object AppHttpClient {
 
@@ -44,25 +46,25 @@ object AppHttpClient {
             chain.proceed(req)
         }
 
-    /** 搜索 / Booru / Ajax 等短超时 API。 */
+    /** 搜索 / Booru / Ajax：适度超时 + 失败重试。 */
     val apiClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.SECONDS)
-            .callTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(18, TimeUnit.SECONDS)
             .addInterceptor(uaInterceptor)
             .addInterceptor(pixivRefererInterceptor)
             .build()
     }
 
-    /** Coil 拉图：略宽裕但仍有总时限，避免一次失败卡太久。 */
+    /** Coil 拉图：弱网/VPN 下需要更长的读超时。 */
     val imageClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(12, TimeUnit.SECONDS)
-            .readTimeout(28, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
-            .callTimeout(40, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(25, TimeUnit.SECONDS)
+            .callTimeout(55, TimeUnit.SECONDS)
             .addInterceptor(uaInterceptor)
             .addInterceptor(pixivRefererInterceptor)
             .build()
@@ -72,6 +74,20 @@ object AppHttpClient {
         withContext(Dispatchers.IO) {
             getStringBlocking(url, headers)
         }
+
+    /** 同一 URL 最多 3 次短退避，应对瞬时断连 / DNS 抖动。 */
+    suspend fun getStringResilient(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        attempts: Int = 3,
+    ): String? {
+        val backoffMs = longArrayOf(0L, 350L, 900L)
+        repeat(attempts.coerceAtMost(backoffMs.size)) { attempt ->
+            if (attempt > 0) delay(backoffMs[attempt])
+            getString(url, headers)?.let { return it }
+        }
+        return null
+    }
 
     fun getStringBlocking(url: String, headers: Map<String, String> = emptyMap()): String? =
         try {
@@ -91,7 +107,6 @@ object AppHttpClient {
             httpProbe(url, "GET", rangeBytes = true)
         }
 
-    /** @see probeUrl */
     fun probeUrlBlocking(url: String): Boolean {
         if (httpProbe(url, "HEAD")) return true
         return httpProbe(url, "GET", rangeBytes = true)

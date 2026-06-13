@@ -1,6 +1,9 @@
 ﻿package com.kuroshimira.nyanpasu.search
 
+import android.content.Context as AndroidContext
 import android.util.Log
+import com.kuroshimira.nyanpasu.network.NetworkEnvironment
+import com.kuroshimira.nyanpasu.network.NetworkRoute
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -30,66 +33,78 @@ internal object SetuSearchEngine {
         val sliderRelaxed: Boolean get() = slider == SliderMode.RELAXED
     }
 
-    suspend fun search(ctx: Context, primaryR18: Int): String {
-        val searchCtx =
-            if (ctx.strictTags.isEmpty() && ctx.softTags.isNotEmpty()) {
-                ctx.copy(strictTags = ctx.softTags, softTags = emptyArray())
+    suspend fun search(androidCtx: AndroidContext, searchCtx: Context, primaryR18: Int): String {
+        val route = NetworkEnvironment.classify(androidCtx)
+        Log.d(TAG, "search route=${NetworkEnvironment.logLabel(route)}")
+        return searchWithRoute(searchCtx, primaryR18, route)
+    }
+
+    suspend fun searchDistinct(
+        androidCtx: AndroidContext,
+        searchCtx: Context,
+        primaryR18: Int,
+        avoidUrl: String,
+    ): String {
+        val route = NetworkEnvironment.classify(androidCtx)
+        val patched = searchCtx.copy(recentUrls = searchCtx.recentUrls + avoidUrl)
+        repeat(5) { attempt ->
+            coroutineContext.ensureActive()
+            val url = searchWithRoute(patched, primaryR18, route)
+            if (url.isNotEmpty() && url != avoidUrl) return url
+            if (attempt < 4) delay(280)
+        }
+        return ""
+    }
+
+    private suspend fun searchWithRoute(searchCtx: Context, primaryR18: Int, route: NetworkRoute): String {
+        val normalized =
+            if (searchCtx.strictTags.isEmpty() && searchCtx.softTags.isNotEmpty()) {
+                searchCtx.copy(strictTags = searchCtx.softTags, softTags = emptyArray())
             } else {
-                ctx
+                searchCtx
             }
-        if (searchCtx.strictTags.isEmpty()) {
-            return fallbackUntagged(ctx, primaryR18)
+        if (normalized.strictTags.isEmpty()) {
+            return fallbackUntagged(normalized, primaryR18, route)
         }
 
-        val variants = TagExpander.expand(searchCtx.strictTags)
-        val sliderAllowed = !TagExpander.isConflictWithSlider(searchCtx.strictTags)
+        val variants = TagExpander.expand(normalized.strictTags)
+        val sliderAllowed = !TagExpander.isConflictWithSlider(normalized.strictTags)
         val profileLadder = buildProfileLadder(sliderAllowed, hasStrictTags = true)
-        val recent = searchCtx.recentUrls
+        val recent = normalized.recentUrls
         val budget = SearchTierBudget(SearchTierBudget.TOTAL_MS)
 
         budget.run(SearchTierBudget.TIER1_MS) {
-            firstNonEmpty(searchCtx, primaryR18, variants, profileLadder, recent, preferFresh = true, attemptsPerCell = 2)
+            firstNonEmpty(normalized, primaryR18, variants, profileLadder, recent, preferFresh = true, attemptsPerCell = 2, route)
         }?.let { return it }
 
-        if (searchCtx.softTags.isNotEmpty()) {
+        if (normalized.softTags.isNotEmpty()) {
             budget.run(SearchTierBudget.TIER1A_MS) {
-                searchStrictWithSoftHints(searchCtx, primaryR18, variants, profileLadder, recent)
+                searchStrictWithSoftHints(normalized, primaryR18, variants, profileLadder, recent, route)
             }?.let { return it }
         }
 
         budget.run(SearchTierBudget.TIER1B_MS) {
-            firstNonEmpty(searchCtx, primaryR18, variants, profileLadder, recent, preferFresh = false, attemptsPerCell = 1)
+            firstNonEmpty(normalized, primaryR18, variants, profileLadder, recent, preferFresh = false, attemptsPerCell = 1, route)
         }?.let { return it }
 
         for (r18 in SearchR18Policy.tierEscalations(primaryR18)) {
             if (!budget.hasTime()) break
             coroutineContext.ensureActive()
             budget.run(SearchTierBudget.TIER2_MS / 2) {
-                firstNonEmpty(searchCtx, r18, variants, profileLadder, recent, preferFresh = true, attemptsPerCell = 1)
+                firstNonEmpty(normalized, r18, variants, profileLadder, recent, preferFresh = true, attemptsPerCell = 1, route)
             }?.let { return it }
             budget.run(SearchTierBudget.TIER2_MS / 2) {
-                firstNonEmpty(searchCtx, r18, variants, profileLadder, recent, preferFresh = false, attemptsPerCell = 1)
+                firstNonEmpty(normalized, r18, variants, profileLadder, recent, preferFresh = false, attemptsPerCell = 1, route)
             }?.let { return it }
         }
 
         budget.run(SearchTierBudget.TIER3_MS) {
-            searchSliderOnly(searchCtx, primaryR18, recent)
+            searchSliderOnly(normalized, primaryR18, recent, route)
         }?.let { return it }
 
         return budget.run(SearchTierBudget.TIER4_MS) {
-            fallbackUntagged(searchCtx, primaryR18)
+            fallbackUntagged(normalized, primaryR18, route)
         } ?: ""
-    }
-
-    suspend fun searchDistinct(ctx: Context, primaryR18: Int, avoidUrl: String): String {
-        val patched = ctx.copy(recentUrls = ctx.recentUrls + avoidUrl)
-        repeat(3) { attempt ->
-            coroutineContext.ensureActive()
-            val url = search(patched, primaryR18)
-            if (url.isNotEmpty() && url != avoidUrl) return url
-            if (attempt < 2) delay(220)
-        }
-        return ""
     }
 
     private fun buildProfileLadder(sliderAllowed: Boolean, hasStrictTags: Boolean): List<FetchProfile> =
@@ -117,6 +132,7 @@ internal object SetuSearchEngine {
         recentUrls: Set<String>,
         preferFresh: Boolean,
         attemptsPerCell: Int,
+        route: NetworkRoute,
     ): String? {
         for (variant in variants.shuffled()) {
             coroutineContext.ensureActive()
@@ -131,6 +147,7 @@ internal object SetuSearchEngine {
                             profile.useSlider,
                             profile.sliderRelaxed,
                             ctx.strictTags,
+                            route,
                         )
                     if (accept(url, recentUrls, preferFresh)) {
                         Log.d(TAG, "hit r18=$r18 variant=$variant profile=$profile")
@@ -149,6 +166,7 @@ internal object SetuSearchEngine {
         variants: List<List<String>>,
         profiles: List<FetchProfile>,
         recentUrls: Set<String>,
+        route: NetworkRoute,
     ): String? {
         for (variant in variants.shuffled()) {
             coroutineContext.ensureActive()
@@ -164,6 +182,7 @@ internal object SetuSearchEngine {
                             sliderRelaxed = profile.sliderRelaxed,
                             intentSourceTags = ctx.strictTags,
                             attachSoftTag = true,
+                            route = route,
                         )
                     if (accept(url, recentUrls, preferFresh = true)) {
                         Log.d(TAG, "hit strict+soft soft=$soft variant=$variant")
@@ -176,7 +195,12 @@ internal object SetuSearchEngine {
         return null
     }
 
-    private suspend fun searchSliderOnly(ctx: Context, primaryR18: Int, recentUrls: Set<String>): String? {
+    private suspend fun searchSliderOnly(
+        ctx: Context,
+        primaryR18: Int,
+        recentUrls: Set<String>,
+        route: NetworkRoute,
+    ): String? {
         for (r18 in SearchR18Policy.fallbackLoliconChain(primaryR18)) {
             coroutineContext.ensureActive()
             for (relaxed in listOf(false, true)) {
@@ -190,6 +214,7 @@ internal object SetuSearchEngine {
                             useSlider = true,
                             sliderRelaxed = relaxed,
                             ctx.strictTags,
+                            route,
                         )
                     if (accept(url, recentUrls, preferFresh = true)) return url
                     delay(18)
@@ -205,6 +230,7 @@ internal object SetuSearchEngine {
                         useSlider = true,
                         sliderRelaxed = relaxed,
                         ctx.strictTags,
+                        route,
                     )
                 if (accept(url, recentUrls, preferFresh = false)) return url
                 delay(18)
@@ -213,7 +239,7 @@ internal object SetuSearchEngine {
         return null
     }
 
-    private suspend fun fallbackUntagged(ctx: Context, primaryR18: Int): String {
+    private suspend fun fallbackUntagged(ctx: Context, primaryR18: Int, route: NetworkRoute): String {
         for (r18 in SearchR18Policy.fallbackLoliconChain(primaryR18)) {
             coroutineContext.ensureActive()
             for (relaxed in listOf(false, true)) {
@@ -227,6 +253,7 @@ internal object SetuSearchEngine {
                             useSlider = true,
                             sliderRelaxed = relaxed,
                             ctx.strictTags,
+                            route,
                         )
                     if (url.isNotEmpty()) return url
                     delay(18)
@@ -241,10 +268,11 @@ internal object SetuSearchEngine {
                     useSlider = false,
                     sliderRelaxed = false,
                     ctx.strictTags,
+                    route,
                 )
             if (bare.isNotEmpty()) return bare
             repeat(2) {
-                val url = SetuFetchPipeline.fetchBare(r18)
+                val url = SetuFetchPipeline.fetchBare(r18, route)
                 if (url.isNotEmpty()) return url
             }
         }

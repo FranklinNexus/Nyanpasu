@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-06-13
+
+### ✨ Added
+- **NetworkEnvironment**：识别 VPN / 弱验证网络，Lolicon 镜像顺序与 Pixiv 解析策略自适应
+- API / 图片下载重试与超时放宽，减少大陆直连与 VPN 切换时的误失败
+
+### 🐛 Fixed
+- **粉主屏 + 蓝锁屏** 不再静默复用旧锁屏图；搜不到第二张 distinct 图时明确失败而非刷同一张
+- 独立锁屏搜索 `searchDistinct` 增至 5 轮，避免与主屏 URL 相同
+
+---
+
 ## [1.2.1] - 2026-06-12
 
 ### 🐛 Fixed
