@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-06-12
+
+### ✨ Added
+- **模块化架构**：UI / Work / Schedule / Search / Wallpaper 分包，MainActivity 瘦身
+- **OEM 壁纸兼容层**：小米、华为、OPPO、vivo 等机型 sync 写入策略
+- **搜索管线拆分**：Lolicon / Danbooru / Booru 池分层 + Tier 子超时
+- **单元测试**：Network、UrlPolicy、OEM、R18 策略等 36 项
+
+### 🔧 Changed
+- WorkManager 三队列分离（手动 / 闹钟 / 周期），预取 fingerprint 防 stale
+- 商业化 README 与版本号更新
+
+### 🐛 Fixed
+- 自动更新调度、锁屏写入、Instant Load、断网 retry 等多项稳定性修复
+
+---
+
 ## [1.1.0] - 2026-01-22
 
 ### ✨ Added

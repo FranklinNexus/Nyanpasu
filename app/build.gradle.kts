@@ -1,6 +1,15 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android) // ✅ 修正：去掉了多余的 jetbrains
+    alias(libs.plugins.kotlin.android)
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -11,29 +20,40 @@ android {
         applicationId = "com.kuroshimira.nyanpasu"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    // ✅ 修正：现在它正确地在 android {} 内部了
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildFeatures {
         viewBinding = true
     }
 
     buildTypes {
         release {
-            // 启用代码混淆和资源压缩，保护源代码并减小 APK 体积
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
-            // Debug 版本关闭混淆，便于调试
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-DEBUG"
@@ -60,10 +80,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
-    implementation("io.coil-kt:coil:2.4.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("androidx.work:work-runtime-ktx:2.8.1")
-    
-    // 📸 PhotoView: 图片手势拖拽和缩放
-    implementation("com.github.chrisbanes:PhotoView:2.3.0")
+    implementation(libs.coil)
+    implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.photoview)
 }

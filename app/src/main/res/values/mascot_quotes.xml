@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="mascot_quotes">
+        <item>Nyanpasu~ 👋</item>
+        <item>Ohiyo! (｡･ω･｡)</item>
+        <item>おかえりなさい！</item>
+        <item>Yahallo~</item>
+        <item>Konbanwa~</item>
+        <item>Otsukare-sama desu!</item>
+        <item>Selamat Pagi!</item>
+        <item>Konnichiwa (´｡• ᵕ •｡`)</item>
+        <item>Tuturu~ ♪</item>
+        <item>Uguu~</item>
+        <item>Auau...</item>
+        <item>Nipah~ ☆</item>
+        <item>Gao~</item>
+        <item>Hawawa~</item>
+        <item>Hau~</item>
+        <item>Pyon pyon~</item>
+        <item>Moe moe kyun!</item>
+        <item>Tehepero~</item>
+        <item>Waku waku!</item>
+        <item>Fuee~</item>
+        <item>Pikya!</item>
+        <item>Hae~?</item>
+        <item>Nyaa~ (=^･ω･^=)</item>
+        <item>Wan!</item>
+        <item>Cheerio!</item>
+        <item>Poi?</item>
+        <item>Nano desu!</item>
+        <item>Desu wa~</item>
+        <item>Ara ara~</item>
+        <item>Umu!</item>
+        <item>Poyon~</item>
+        <item>Nico nico ni~</item>
+        <item>Fun things are fun!</item>
+        <item>Rice is a side dish!</item>
+        <item>Kininarimasu!</item>
+        <item>Safe? Out? Safe!</item>
+        <item>Timotei~ Timotei~</item>
+        <item>I buy sausage!</item>
+        <item>Secret Society BLANKET.</item>
+        <item>Explosion!!</item>
+        <item>Eris pads her chest.</item>
+        <item>Kazuma desu.</item>
+        <item>El Psy Kongroo.</item>
+        <item>I am mad scientist!</item>
+        <item>Daga otoko da.</item>
+        <item>Just according to keikaku.</item>
+        <item>The moon is beautiful, isn\'t it?</item>
+        <item>I want to eat your pancreas.</item>
+        <item>Menma, we found you!</item>
+        <item>Dango dango dango~</item>
+        <item>Zettai Ryouiki is justice!</item>
+        <item>Flat is justice!</item>
+        <item>Megane is the best!</item>
+        <item>Twintails supremacy!</item>
+        <item>Pipiru piru piru pipiru pi~</item>
+        <item>Ask not the sparrow how the eagle soars.</item>
+        <item>Don\'t lose your way!</item>
+        <item>Let\'s all love Lain.</item>
+        <item>Present day, present time.</item>
+        <item>Zetsubou shita!</item>
+        <item>Humanity has declined.</item>
+        <item>Watashi wa pan desu.</item>
+        <item>Panzer vor!</item>
+        <item>Ginko was here.</item>
+        <item>Odd Taxi?</item>
+        <item>Keep your hands off Eizouken!</item>
+        <item>Ping Pong is life.</item>
+        <item>Dekomori desu!</item>
+        <item>Wicked Lord Shingan!</item>
+        <item>Ai yo!</item>
+        <item>Kira kira doki doki!</item>
+        <item>Bucchake arienaiss!</item>
+        <item>Omochikaeri~!</item>
+        <item>Daijoubu, mondai nai.</item>
+        <item>Gacha time!</item>
+        <item>Critical hit!</item>
+        <item>Level up!</item>
+        <item>Save point reached.</item>
+        <item>Boss music starts...</item>
+        <item>Respawning...</item>
+        <item>GG WP!</item>
+        <item>Rush B!</item>
+        <item>Praise the Sun!</item>
+        <item>You died.</item>
+        <item>Hey, you\'re finally awake.</item>
+        <item>Doktah?</item>
+        <item>Tabibito-san?</item>
+        <item>Kanchou?</item>
+        <item>Sensei?</item>
+        <item>Producer-san?</item>
+        <item>Shikikan?</item>
+        <item>No bugs today, please~</item>
+        <item>Compiling happiness...</item>
+        <item>Git push your dreams!</item>
+        <item>404: Sadness not found.</item>
+        <item>Sudo make me a sandwich.</item>
+        <item>Hello World!</item>
+        <item>Stack overflow? Stack hugs!</item>
+        <item>while(alive) { code(); }</item>
+        <item>Error 418: I\'m a teapot.</item>
+        <item>const happiness = true;</item>
+        <item>Pat pat~ (｡•̀ᴗ-)✧</item>
+        <item>Meow? (=^･ｪ･^=)</item>
+        <item>Loading cuteness... [▓▓▓▓▓▓] 100%</item>
+        <item>*stares* (・_・)</item>
+        <item>Boop! (•ω•)</item>
+        <item>Zzz... (-.-)zzZ</item>
+        <item>*nods* (๑•̀ㅂ•́)و✧</item>
+        <item>Ehehe~ (⁄ ⁄•⁄ω⁄•⁄ ⁄)</item>
+        <item>Chu~ (˘з˘)</item>
+        <item>*spins* (ノ´ヮ`)ノ*: ･ﾟ</item>
+        <item>Ganbare! ٩(•̀ᴗ•́)و</item>
+        <item>Yosh! (ง •̀_•́)ง</item>
+        <item>Yatta! ヽ(^o^)丿</item>
+        <item>Honto ni? (｡･ω･｡)</item>
+        <item>Maa maa~ (´ ω `)</item>
+        <item>Dame da yo~ (&gt;_&lt;)</item>
+        <item>(　･ω･)⊃</item>
+        <item>( ´ ▽ ` )ﾉ</item>
+        <item>(つ✧ω✧)つ</item>
+        <item>ヾ(･ω･*)ﾉ</item>
+        <item>(*´∀｀*)</item>
+        <item>(｡◕ ∀ ◕｡)</item>
+        <item>( ˘ω˘ )</item>
+        <item>ε-(´∀｀*)</item>
+        <item>(๑˃̵ᴗ˂̵)و</item>
+        <item>Don\'t forget to drink water~</item>
+        <item>Rice is ready!</item>
+        <item>It\'s anime o\'clock!</item>
+        <item>Time for a break?</item>
+        <item>Have you eaten?</item>
+        <item>Stretch time~</item>
+        <item>Compiling dreams...</item>
+        <item>Debugging reality...</item>
+        <item>System all green!</item>
+        <item>Cache refreshed!</item>
+        <item>Connection stable~</item>
+        <item>Happiness.exe running.</item>
+        <item>Are you there?</item>
+        <item>Staring contest? (*･ω･)</item>
+        <item>Don\'t ignore me~ (´･ω･`)</item>
+        <item>Battery check!</item>
+        <item>Remember to rest!</item>
+        <item>You matter!</item>
+        <item>Sending good vibes~</item>
+        <item>It\'s okay to be slow.</item>
+        <item>One step at a time~</item>
+        <item>Believe in yourself!</item>
+        <item>Nyoro~n</item>
+        <item>Puwa puwa~</item>
+        <item>Funya~</item>
+        <item>Mukyuu~</item>
+        <item>Hora hora~</item>
+        <item>Mou~!</item>
+        <item>Yare yare...</item>
+        <item>Saa...</item>
+        <item>Etto...</item>
+        <item>Ano ne...</item>
+        <item>Nee nee~</item>
+        <item>Moshi moshi~</item>
+        <item>Ja ne~</item>
+        <item>Mata ne!</item>
+        <item>Oyasumi~</item>
+        <item>Itadakimasu!</item>
+        <item>Gochisousama!</item>
+        <item>Tadaima!</item>
+        <item>Itterasshai!</item>
+    </string-array>
+</resources>

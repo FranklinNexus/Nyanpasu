@@ -79,3 +79,6 @@ lint/tmp/
 
 # Android Profiling
 *.hprof
+
+# Local History / editor snapshots (not part of the app)
+.history/

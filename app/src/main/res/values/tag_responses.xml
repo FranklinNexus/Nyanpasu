@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tag_responses">
+        <item>blue_archive|Sensei! Welcome back! (๑˃ᴗ˂)ﻭ</item>
+        <item>ba|Sensei, I\'ve been waiting for you! (´｡• ᵕ •｡`) ♡</item>
+        <item>genshin|Ad astra abyssosque! Let\'s explore Teyvat! ✨</item>
+        <item>genshin_impact|Traveler, ready for adventure? (◕‿◕✿)</item>
+        <item>arknights|Dokutah, focus on the mission! (•̀ᴗ•́)و</item>
+        <item>ak|Doctor, time for sanity potion~ (๑╹ᆺ╹๑)</item>
+        <item>touhou|Welcome to Gensokyo! (￣▽￣)ノ</item>
+        <item>東方|Reimu is on the way... (´･ᴗ･`)</item>
+        <item>fate|Saber-class Servant, ready! (｀・ω・´)ゞ</item>
+        <item>fgo|Master, your command? (๑•̀ㅂ•́)و✧</item>
+        <item>azur_lane|Commander, sortie time! ヾ(•ω•`)o</item>
+        <item>al|Shikikan, mission briefing! (๑˃̵ᴗ˂̵)</item>
+        <item>honkai|Captain on the bridge! (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧</item>
+        <item>nikke|Commander, reporting for duty! ୧(＾ 〰 ＾)୨</item>
+        <item>kancolle|Admiral, fleet assembled! (•̀o•́)ง</item>
+        <item>maid|Master, may I serve you today? (o^▽^o)</item>
+        <item>catgirl|Nya nya~ Meow for you! (=^･ω･^=)</item>
+        <item>neko|Kawaii cat ears detected! (=ＴェＴ=)</item>
+        <item>loli|FBI OPEN UP! (╬ Ò﹏Ó) ...Just kidding~ Legal content only!</item>
+        <item>waifu|Ah, a person of culture! (￣ω￣)</item>
+        <item>anime|Great taste in Japanese animation! (☆ω☆)</item>
+        <item>kawaii|Moe moe kyun~! ♡(˃͈ દ ˂͈ ༶ )</item>
+        <item>white_hair|Ah yes, the superior hair color! (๑˃̵ᴗ˂̵)و</item>
+        <item>pink_hair|Pink is justice! (｡♥‿♥｡)</item>
+        <item>oppai|Ah, I see you\'re cultured too~ (¬‿¬)</item>
+        <item>pantsu|Degenerates like you belong on... wait, you\'re fine! (≧▽≦)</item>
+    </string-array>
+</resources>

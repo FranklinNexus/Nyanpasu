@@ -14,7 +14,16 @@
 -keep public class * extends android.app.Application
 
 # --- Keep WorkManager Workers ---
--keep class com.kuroshimira.nyanpasu.WallpaperWorker { *; }
+-keep class com.kuroshimira.nyanpasu.work.WallpaperWorker { *; }
+-keep class com.kuroshimira.nyanpasu.work.WallpaperJobRunner { *; }
+-keep class com.kuroshimira.nyanpasu.wallpaper.WallpaperApplier { *; }
+-keep class com.kuroshimira.nyanpasu.wallpaper.WallpaperOemCompat { *; }
+-keep class com.kuroshimira.nyanpasu.wallpaper.WallpaperHistory { *; }
+-keep class com.kuroshimira.nyanpasu.work.PrefetchCoordinator { *; }
+-keep class com.kuroshimira.nyanpasu.search.PixivIllustResolver { *; }
+-keep class com.kuroshimira.nyanpasu.search.BooruPoolClient { *; }
+-keep class com.kuroshimira.nyanpasu.schedule.AutoWallpaperAlarmReceiver { *; }
+-keep class com.kuroshimira.nyanpasu.schedule.BootReceiver { *; }
 -keep class * extends androidx.work.Worker
 -keep class * extends androidx.work.CoroutineWorker
 

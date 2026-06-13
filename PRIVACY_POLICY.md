@@ -19,7 +19,7 @@ Nyanpasu Wallpaper ("the App") is committed to protecting your privacy. This pol
 
 2. **Local Storage**
    - **Purpose**: Store downloaded wallpapers and app preferences
-   - **Location**: Private app directory (`/data/data/com.example.acgwallpaper/`)
+   - **Location**: Private app directory (`/data/data/com.kuroshimira.nyanpasu/`, debug builds use `com.kuroshimira.nyanpasu.debug`)
    - **Access**: Only accessible by the App, never shared
 
 3. **Wallpaper Permission**
@@ -57,11 +57,11 @@ All data is stored **locally on your device**:
 ### Stored Data
 - Downloaded wallpaper images (PNG format)
 - App preferences (tags, schedule settings, dual-mode state)
-- Wallpaper history (last 5 wallpapers for undo feature)
+- Wallpaper history (last 5 wallpapers for undo feature; home and lock screen when enabled)
 
 ### Data Retention
 - **Wallpapers**: Stored until you uninstall the app or manually clear data
-- **History**: Automatically deleted after 7 days
+- **History**: Automatically deleted after 7 days (undo stack persisted in app preferences)
 - **Preferences**: Retained until app uninstall
 
 ### Data Deletion

@@ -13,6 +13,9 @@ workManager = "2.9.0"
 jsoup = "1.17.2"
 coil = "2.5.0"
 coroutines = "1.8.0"
+okhttp = "4.12.0"
+photoview = "2.3.0"
+robolectric = "4.14.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +39,10 @@ coil = { group = "io.coil-kt", name = "coil", version.ref = "coil" }
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+photoview = { group = "com.github.chrisbanes", name = "PhotoView", version.ref = "photoview" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

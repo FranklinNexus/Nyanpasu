@@ -34,6 +34,8 @@
     <string name="schedule_6h">Every 6 Hours</string>
     <string name="schedule_12h">Every 12 Hours</string>
     <string name="schedule_24h">Every 24 Hours</string>
+    <string name="schedule_dialog_title">Refresh Frequency</string>
+    <string name="schedule_auto_label">Auto: %1$s ▾</string>
     
     <!-- Tag Input -->
     <string name="tag_hint">Add tag…</string>
@@ -54,20 +56,51 @@
     <string name="wallpaper_updated_home">Home Updated! ✨</string>
     <string name="wallpaper_updated_lock">Lock Updated! ✨</string>
     <string name="wallpaper_updated_both">Both Updated! ✨</string>
-    <string name="wallpaper_restored">Restored!</string>
-    <string name="wallpaper_saved">Saved to Gallery!</string>
+    <string name="wallpaper_restored">Previous wallpaper restored! 🔙</string>
+    <string name="wallpaper_saved">Saved to gallery! 📸</string>
+    
+    <!-- Toasts &amp; dialogs -->
+    <string name="toast_auto_need_target">请先开启 Home 或 Lock 壁纸开关，自动更新才会生效。</string>
+    <string name="toast_alarm_fallback">无法使用精确闹钟，已改为约每 24 小时自动刷新（非严格 7:00）。</string>
+    <string name="toast_exact_alarm_request">请在系统设置中允许「闹钟与提醒」，以确保每日 7:00 准时换壁纸。</string>
+    <string name="toast_wallpaper_applied">New wallpaper applied! ✨</string>
+    <string name="toast_download_failed">下载失败或系统拒绝设置壁纸。请检查网络、更换壁纸权限；华为等机型请关闭杂志锁屏。</string>
+    <string name="toast_strict_mode">Strict Mode 🔒</string>
+    <string name="toast_soft_mode">Soft Mode 🎲</string>
+    <string name="toast_history_missing">History file not found</string>
+    <string name="toast_history_empty">No history available</string>
+    <string name="toast_undo_apply_failed">壁纸文件已恢复，但写入系统失败，请检查权限。</string>
+    <string name="toast_nothing_to_save">No wallpaper to save yet. Try refreshing first!</string>
+    <string name="toast_save_permission">Failed to save. Check storage permission</string>
+    <string name="toast_save_failed">Save failed. Grant storage permission in settings</string>
+    <string name="toast_target_updated">%1$s Updated! (Perfect Fit) ✨</string>
+    <string name="toast_target_apply_failed">未能写入系统壁纸（%1$s），请检查权限或杂志锁屏设置</string>
+    <string name="toast_target_wallpaper_applied">%1$s wallpaper applied! ✨</string>
+    <string name="toast_target_set_failed">无法设置 %1$s 壁纸，请查看系统是否限制第三方应用</string>
+    <string name="toast_storage_granted">Permission granted! You can now save images ✨</string>
+    <string name="toast_storage_denied">Permission denied. Save feature won\'t work :(</string>
+    <string name="toast_notification_denied">未授予通知权限，自动换壁纸完成后将不会提醒。</string>
+    <string name="target_home">Home</string>
+    <string name="target_lock">Lock</string>
     
     <!-- Mascot Responses -->
     <string name="mascot_greeting">Nyanpasu~ 👋</string>
     <string name="mascot_safe_mode">Safe mode engaged! 🛡️</string>
-    <string name="mascot_mix_mode">Mixing things up! (⁄ ⁄•⁄ω⁄•⁄ ⁄)⁄</string>
+    <string name="mascot_mix_mode">Mix 模式：偏萌向，不含 explicit～ (⁄ ⁄•⁄ω⁄•⁄ ⁄)⁄</string>
     <string name="mascot_nsfw_mode">Ahem… Adult mode on. 🔥</string>
     
+    <!-- Welcome Dialog -->
+    <string name="welcome_title">Welcome to Nyanpasu! 🎉</string>
+    <string name="welcome_message">Thanks for installing!\n\n✨ Quick Guide:\n• Tap Home/Lock buttons to toggle (Off → Pink → Blue)\n• Pink = Sync mode (same wallpaper)\n• Blue = Independent mode (different wallpapers)\n• Slide the style bar to adjust taste\n• Add tags for custom preferences\n\nTip: Click the logo 10 times for a surprise~ (¬‿¬)</string>
+    <string name="welcome_btn_start">Let\'s Go! ✨</string>
+
     <!-- Developer Dialog -->
     <string name="developer_title">Developer (´ ε ` )</string>
     <string name="developer_message">Hello! (｡♥‿♥｡)\nThanks for using Nyanpasu~\n\nMade with ❤ by [KuroshiMira]\nA veteran otaku building dreams!\n\nWanna be friends? Let\'s grab coffee!\n(〃￣ω￣〃)\n\nProject: Nyanpasu Wallpaper\nVersion: %1$s\n\n(✧ω✧) Enjoy your Moe journey!</string>
     <string name="developer_btn_blog">My Blog</string>
     <string name="developer_btn_contact">Contact Me</string>
+    <string name="developer_blog_url">https://WisdomEchoes.net</string>
+    <string name="developer_contact_url">https://t.me/FranklinNexus</string>
     <string name="telegram_not_found">Telegram not found (ノдヽ)</string>
     
     <!-- Notifications -->
@@ -76,10 +109,16 @@
     <string name="notification_channel_name">Wallpaper Updates</string>
     <string name="notification_channel_desc">Notifications for new wallpapers</string>
     
+    <string name="notification_lock_partial">Home updated; lock screen wallpaper failed (・_・)</string>
+    
     <!-- Errors -->
     <string name="error_network">Network error. Please check your connection.</string>
     <string name="error_no_results">No results found. Try different tags?</string>
     <string name="error_download_failed">Download failed. Please try again.</string>
+    <string name="error_wallpaper_sync_failed">Wallpaper sync failed</string>
+    <string name="error_apply_both_failed">主屏与锁屏壁纸均未更新，请检查权限或关闭杂志锁屏。</string>
+    <string name="error_apply_lock_failed">主屏已更新，锁屏壁纸未更新，请检查锁屏权限或杂志锁屏设置。</string>
+    <string name="error_apply_generic">系统壁纸未更新，请检查是否允许更换壁纸或关闭系统杂志锁屏。</string>
     <string name="error_file_save">Failed to save file.</string>
     
     <!-- Accessibility -->
