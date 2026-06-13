@@ -46,6 +46,11 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
         val bufferSlot = inputData.getString("BUFFER_SLOT") ?: "a"
 
         val prefs = WallpaperPrefs.prefs(applicationContext)
+        if (isAuto && !WallpaperPrefs.isAutoUpdateEnabled(prefs)) {
+            Log.d(TAG, "Skipped: auto update disabled")
+            return Result.success()
+        }
+
         val params = resolveParams(isAuto, isUrgent, prefs)
 
         if (!isAuto && !isUrgent && !WallpaperPrefs.canApplyWallpaper(prefs)) {
@@ -159,7 +164,7 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
         val infos = WorkManager.getInstance(applicationContext)
             .getWorkInfosForUniqueWork(WallpaperWorkNames.AUTO_PERIODIC)
             .get()
-        return WallpaperWorkNames.isPeriodicApplyRunning(infos)
+        return WallpaperWorkNames.isPeriodicApplyRunning(infos, excludeId = id)
     }
 
     /** 预取任务入队后偏好变更时，跳过写入避免覆盖新槽位。 */

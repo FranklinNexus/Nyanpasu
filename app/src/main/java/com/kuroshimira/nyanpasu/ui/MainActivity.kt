@@ -68,7 +68,27 @@ class MainActivity : AppCompatActivity() {
             )
 
         mascot = MascotController(this, binding)
-        preview = PreviewController(this, binding, lifecycleScope, previewState, prefetchCoordinator)
+
+        workBindings =
+            MainActivityWorkBindings(
+                activity = this,
+                binding = binding,
+                scope = lifecycleScope,
+                previewState = previewState,
+                preview = { preview },
+                scheduleReschedule = { scheduleUi.rescheduleIfEnabled() },
+                workInputBuilder = { urgent, slot -> buildWallpaperWorkInput(urgent, slot) },
+            )
+        workBindings.wire(owner = this)
+
+        preview =
+            PreviewController(
+                activity = this,
+                binding = binding,
+                scope = lifecycleScope,
+                state = previewState,
+                prefetchCoordinator = { workBindings.prefetchCoordinator },
+            )
         wallpaperUi =
             WallpaperUiController(
                 activity = this,
@@ -88,18 +108,6 @@ class MainActivity : AppCompatActivity() {
                 onTagsChanged = { scheduleUi.refreshAfterPrefsChanged() },
                 bounceAnimate = { wallpaperUi.bounceAnimate(it) },
             )
-
-        workBindings =
-            MainActivityWorkBindings(
-                activity = this,
-                binding = binding,
-                scope = lifecycleScope,
-                previewState = previewState,
-                preview = { preview },
-                scheduleReschedule = { scheduleUi.rescheduleIfEnabled() },
-                workInputBuilder = { urgent, slot -> buildWallpaperWorkInput(urgent, slot) },
-            )
-        workBindings.wire(owner = this)
 
         preview.setupAspectRatio()
 

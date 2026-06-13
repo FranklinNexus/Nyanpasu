@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-06-12
+
+### 🐛 Fixed
+- **启动崩溃**：修复 `MainActivity` 在 `workBindings` 初始化前访问 `prefetchCoordinator` 导致的必崩
+- **周期自动换壁纸**：Periodic Worker 不再因检测到自身 RUNNING 而无限 retry
+- **调度边界**：关自动更新后闹钟/Worker 不再误执行；双关目标时用 `cancelScheduling` 而非 `cancelAll`
+
+---
+
 ## [1.2.0] - 2026-06-12
 
 ### ✨ Added

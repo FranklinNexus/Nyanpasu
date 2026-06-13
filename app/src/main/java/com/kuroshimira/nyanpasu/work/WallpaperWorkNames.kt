@@ -44,6 +44,6 @@ object WallpaperWorkNames {
             it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
         }
 
-    fun isPeriodicApplyRunning(infos: List<WorkInfo>): Boolean =
-        infos.any { it.state == WorkInfo.State.RUNNING }
+    fun isPeriodicApplyRunning(infos: List<WorkInfo>, excludeId: java.util.UUID? = null): Boolean =
+        infos.any { it.id != excludeId && it.state == WorkInfo.State.RUNNING }
 }

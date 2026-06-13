@@ -102,9 +102,12 @@ object AutoWallpaperScheduler {
     }
 
     fun onDailyAlarmFired(context: Context) {
-        enqueueAutoWallpaperWork(context)
         val prefs = WallpaperPrefs.prefs(context)
-        if (WallpaperPrefs.isAutoUpdateEnabled(prefs) && WallpaperPrefs.readScheduleIndex(prefs) == 0) {
+        if (!WallpaperPrefs.isAutoUpdateEnabled(prefs) || !WallpaperPrefs.canApplyWallpaper(prefs)) {
+            return
+        }
+        enqueueAutoWallpaperWork(context)
+        if (WallpaperPrefs.readScheduleIndex(prefs) == 0) {
             scheduleDailyAlarm(context)
         }
     }

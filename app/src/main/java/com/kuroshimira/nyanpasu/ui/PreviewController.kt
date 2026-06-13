@@ -29,7 +29,7 @@ class PreviewController(
     private val binding: ActivityMainBinding,
     private val scope: CoroutineScope,
     private val state: State,
-    private val prefetchCoordinator: PrefetchCoordinator,
+    private val prefetchCoordinator: () -> PrefetchCoordinator,
 ) {
 
     data class State(
@@ -84,7 +84,7 @@ class PreviewController(
                 WallpaperWriteGuard.withWriteLock {
                     withContext(Dispatchers.IO) { file.delete() }
                 }
-                prefetchCoordinator.maybeApplyToPreview()
+                prefetchCoordinator().maybeApplyToPreview()
             }
         }
     }

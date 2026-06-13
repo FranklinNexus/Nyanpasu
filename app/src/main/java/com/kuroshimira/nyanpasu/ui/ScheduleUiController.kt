@@ -82,7 +82,7 @@ class ScheduleUiController(
                 .edit()
                 .putBoolean(WallpaperPrefs.KEY_DAILY_ENABLED, false)
                 .apply()
-            AutoWallpaperScheduler.cancelAll(activity)
+            AutoWallpaperScheduler.cancelScheduling(activity)
             Toast.makeText(
                 activity,
                 activity.getString(R.string.toast_auto_need_target),
