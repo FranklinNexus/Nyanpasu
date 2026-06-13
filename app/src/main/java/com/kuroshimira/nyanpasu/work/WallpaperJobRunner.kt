@@ -2,8 +2,10 @@ package com.kuroshimira.nyanpasu.work
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.work.Data
+import com.kuroshimira.nyanpasu.network.WallpaperImageIdentity
 import com.kuroshimira.nyanpasu.search.SetuSearchEngine
 import com.kuroshimira.nyanpasu.wallpaper.ImageProcessor
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplier
@@ -11,6 +13,7 @@ import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperFiles
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperHistory
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperTargetMode
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
@@ -45,8 +48,9 @@ object WallpaperJobRunner {
             else -> WallpaperFiles.BUFFER_A
         }
         val sync = WallpaperApplier.isSyncMode(homeState, lockState)
+        val dual = WallpaperTargetMode.isDualMode(homeState, lockState)
         val prefs = WallpaperPrefs.prefs(context)
-        val homeRequired = homeState > 0
+        val homeRequired = WallpaperTargetMode.homeRequired(homeState)
 
         val searchCtx = SetuSearchEngine.Context(
             styleValue = styleValue,
@@ -94,7 +98,7 @@ object WallpaperJobRunner {
 
         var lockUrl = ""
         var lockSearchFailed = false
-        if (needsIndependentLockWallpaper(isUrgent, homeRequired, sync, lockState)) {
+        if (WallpaperPipeline.needsDualSearch(isUrgent, homeState, lockState)) {
             val resolved = resolveIndependentLockUrl(context, searchCtx, r18Mode, homeUrl)
             lockUrl = resolved.first
             lockSearchFailed = resolved.second
@@ -112,7 +116,7 @@ object WallpaperJobRunner {
             }
         var lockBitmapForApply: Bitmap? = null
         var lockDownloadFailed = false
-        if (needsIndependentLockWallpaper(isUrgent, homeRequired, sync, lockState)) {
+        if (WallpaperPipeline.needsDualSearch(isUrgent, homeState, lockState)) {
             if (homeRequired) {
                 if (lockUrl.isNotEmpty()) {
                     val lockBmp = downloadBitmap(lockUrl)
@@ -132,20 +136,12 @@ object WallpaperJobRunner {
                 WallpaperHistory.backup(context)
             }
 
-            if (homeRequired) {
-                WallpaperFiles.saveBitmapSafely(context, processedHome, targetFilename)
-            } else if (lockState > 0) {
-                WallpaperFiles.saveBitmapSafely(context, processedHome, WallpaperFiles.LOCK)
-            }
-
-            if (isUrgent) {
-                WallpaperPrefs.appendRecentFetchedUrl(prefs, homeUrl)
-                if (lockUrl.isNotEmpty()) {
-                    WallpaperPrefs.appendRecentFetchedUrl(prefs, lockUrl)
-                }
-            }
-
             if (!isUrgent) {
+                if (homeRequired) {
+                    WallpaperFiles.saveBitmapSafely(context, processedHome, targetFilename)
+                } else if (lockState > 0) {
+                    WallpaperFiles.saveBitmapSafely(context, processedHome, WallpaperFiles.LOCK)
+                }
                 val fingerprint =
                     WallpaperPrefs.prefetchSnapshotFingerprint(
                         styleValue = styleValue,
@@ -160,22 +156,14 @@ object WallpaperJobRunner {
                 return WallpaperJobOutcome(ok = true)
             }
 
-            if (!sync && lockState == 2 && lockBitmapForApply == null) {
-                Log.e(TAG, "Independent lock required but no lock bitmap; aborting apply")
+            if (dual && lockBitmapForApply == null) {
+                Log.e(TAG, "Dual mode required but no lock bitmap; aborting without saving files")
                 return WallpaperJobOutcome(
                     ok = false,
                     applyResult = WallpaperApplyResult(homeOk = false, lockOk = false),
                     lockSearchFailed = lockSearchFailed,
                     lockDownloadFailed = lockDownloadFailed,
                 )
-            }
-
-            if (sync && lockState > 0) {
-                WallpaperFiles.saveBitmapSafely(context, processedHome, WallpaperFiles.LOCK)
-            }
-
-            lockBitmapForApply?.let { processedLock ->
-                WallpaperFiles.saveBitmapSafely(context, processedLock, WallpaperFiles.LOCK)
             }
 
             val applyResult = WallpaperApplier.applyForStates(
@@ -186,18 +174,59 @@ object WallpaperJobRunner {
                 lockBitmap = lockBitmapForApply,
             )
 
-            val lockRequired = lockState > 0 && (sync || lockState == 2)
-            val ok = (!homeRequired || applyResult.homeOk) &&
-                (!lockRequired || applyResult.lockOk) &&
-                !(lockState == 2 && !sync && lockSearchFailed && lockRequired) &&
-                !(lockState == 2 && !sync && lockDownloadFailed)
+            val ok = WallpaperPipeline.evaluateJobOk(
+                homeState = homeState,
+                lockState = lockState,
+                homeRequired = homeRequired,
+                applyResult = applyResult,
+                lockSearchFailed = lockSearchFailed,
+                lockDownloadFailed = lockDownloadFailed,
+            )
+
+            fun persistHomeFiles() {
+                if (homeRequired) {
+                    WallpaperFiles.saveBitmapSafely(context, processedHome, targetFilename)
+                    WallpaperPrefs.saveHomeSourceUrl(prefs, homeUrl)
+                    WallpaperPrefs.appendRecentFetchedUrl(prefs, homeUrl)
+                } else if (lockState > 0) {
+                    WallpaperFiles.saveBitmapSafely(context, processedHome, WallpaperFiles.LOCK)
+                }
+            }
+
+            fun persistLockFiles() {
+                if (sync && lockState > 0) {
+                    WallpaperFiles.saveBitmapSafely(context, processedHome, WallpaperFiles.LOCK)
+                }
+                lockBitmapForApply?.let { processedLock ->
+                    WallpaperFiles.saveBitmapSafely(context, processedLock, WallpaperFiles.LOCK)
+                }
+                if (lockUrl.isNotEmpty()) {
+                    WallpaperPrefs.appendRecentFetchedUrl(prefs, lockUrl)
+                }
+            }
 
             if (!ok) {
                 Log.e(TAG, "Wallpaper apply incomplete home=${applyResult.homeOk} lock=${applyResult.lockOk}")
+                if (applyResult.homeOk) {
+                    persistHomeFiles()
+                    WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, applyResult)
+                }
+                return WallpaperJobOutcome(
+                    ok = false,
+                    applyResult = applyResult,
+                    lockSearchFailed = lockSearchFailed,
+                    lockDownloadFailed = lockDownloadFailed,
+                )
             }
 
+            persistHomeFiles()
+            persistLockFiles()
+
+            WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, applyResult)
+            WallpaperPrefs.clearDualComplementCooldown(prefs)
+
             return WallpaperJobOutcome(
-                ok = ok,
+                ok = true,
                 applyResult = applyResult,
                 lockSearchFailed = lockSearchFailed,
                 lockDownloadFailed = lockDownloadFailed,
@@ -214,12 +243,101 @@ object WallpaperJobRunner {
         }
     }
 
-    private fun needsIndependentLockWallpaper(
-        isUrgent: Boolean,
-        homeRequired: Boolean,
-        sync: Boolean,
+    /**
+     * 粉蓝/蓝粉且主屏文件已存在：只搜索/下载锁屏图，保留当前主屏，并写入系统。
+     */
+    suspend fun runLockComplement(
+        context: Context,
+        styleValue: Int,
+        strictTags: Array<String>,
+        softTags: Array<String>,
+        homeState: Int,
         lockState: Int,
-    ): Boolean = isUrgent && !sync && lockState == 2 && (homeRequired || lockState > 0)
+        r18Mode: Int,
+        downloadBitmap: suspend (String) -> Bitmap?,
+    ): WallpaperJobOutcome = withContext(Dispatchers.IO) {
+        if (!WallpaperTargetMode.isDualMode(homeState, lockState)) {
+            return@withContext WallpaperJobOutcome(ok = true)
+        }
+        if (!WallpaperFiles.hasHomeWallpaper(context)) {
+            return@withContext WallpaperJobOutcome.searchFailed()
+        }
+
+        val prefs = WallpaperPrefs.prefs(context)
+        val homeFile = WallpaperFiles.homeFile(context)
+        val homeBitmap =
+            BitmapFactory.decodeFile(homeFile.absolutePath)?.let {
+                ImageProcessor.downscaleIfNeeded(it, ImageProcessor.maxDownloadDimension(context))
+            } ?: return@withContext WallpaperJobOutcome.downloadFailed()
+
+        val homeUrl = WallpaperPrefs.readHomeSourceUrl(prefs)
+        if (homeUrl.isBlank()) {
+            Log.w(TAG, "Complement: missing HOME_SOURCE_URL, lock dedupe may be weaker")
+        }
+        val searchCtx =
+            SetuSearchEngine.Context(
+                styleValue = styleValue,
+                strictTags = strictTags,
+                softTags = softTags,
+                recentUrls = WallpaperPrefs.readRecentFetchedUrls(prefs),
+            )
+        val (lockUrl, lockSearchFailed) = resolveIndependentLockUrl(context, searchCtx, r18Mode, homeUrl)
+        if (lockSearchFailed || lockUrl.isEmpty()) {
+            homeBitmap.takeIf { !it.isRecycled }?.recycle()
+            return@withContext WallpaperJobOutcome(
+                ok = false,
+                applyResult = WallpaperApplyResult(homeOk = false, lockOk = false),
+                lockSearchFailed = true,
+            )
+        }
+
+        val lockRaw = downloadBitmap(lockUrl)
+        if (lockRaw == null) {
+            homeBitmap.takeIf { !it.isRecycled }?.recycle()
+            return@withContext WallpaperJobOutcome(
+                ok = false,
+                applyResult = WallpaperApplyResult(homeOk = false, lockOk = false),
+                lockDownloadFailed = true,
+            )
+        }
+
+        val lockBitmap = ImageProcessor.centerCrop(context, lockRaw, recycleSource = true)
+        try {
+            return@withContext WallpaperWriteGuard.withWriteLock {
+                WallpaperHistory.backup(context)
+
+                val applyResult =
+                    WallpaperApplier.applyForStates(
+                        context = context,
+                        homeBitmap = homeBitmap,
+                        homeState = homeState,
+                        lockState = lockState,
+                        lockBitmap = lockBitmap,
+                    )
+                val ok =
+                    WallpaperPipeline.evaluateJobOk(
+                        homeState = homeState,
+                        lockState = lockState,
+                        homeRequired = WallpaperTargetMode.homeRequired(homeState),
+                        applyResult = applyResult,
+                        lockSearchFailed = false,
+                        lockDownloadFailed = false,
+                    )
+                if (!ok) {
+                    return@withWriteLock WallpaperJobOutcome(ok = false, applyResult = applyResult)
+                }
+
+                WallpaperFiles.saveBitmapSafely(context, lockBitmap, WallpaperFiles.LOCK)
+                WallpaperPrefs.appendRecentFetchedUrl(prefs, lockUrl)
+                WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, applyResult)
+                WallpaperPrefs.clearDualComplementCooldown(prefs)
+                WallpaperJobOutcome(ok = true, applyResult = applyResult)
+            }
+        } finally {
+            homeBitmap.takeIf { !it.isRecycled }?.recycle()
+            lockBitmap.takeIf { !it.isRecycled }?.recycle()
+        }
+    }
 
     private suspend fun resolveIndependentLockUrl(
         context: Context,
@@ -239,7 +357,7 @@ object WallpaperJobRunner {
             ""
         }
 
-        if (lockUrl.isEmpty() || lockUrl == homeUrl) {
+        if (lockUrl.isEmpty() || WallpaperImageIdentity.isSameImage(lockUrl, homeUrl)) {
             lockUrl = try {
                 withTimeout(SEARCH_TIMEOUT_LOCK_MS) {
                     SetuSearchEngine.searchDistinct(context, lockCtx, r18Mode, homeUrl)
@@ -252,7 +370,7 @@ object WallpaperJobRunner {
             }
         }
 
-        if (lockUrl.isEmpty() || lockUrl == homeUrl) {
+        if (lockUrl.isEmpty() || WallpaperImageIdentity.isSameImage(lockUrl, homeUrl)) {
             Log.w(TAG, "Independent lock: no distinct URL (home=$homeUrl lock=$lockUrl)")
             return "" to true
         }

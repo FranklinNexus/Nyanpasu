@@ -1,4 +1,3 @@
-import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -6,10 +5,30 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+// 构建产物统一写到 .out/，避免 Windows 上 R.jar 被多进程锁住
+// Android Studio（Run/Sync）→ .out/app-ide
+// gradlew / CI           → .out/app
+// 终端 build.ps1         → .out/app-<时间戳>
+val nyanpasuOutSuffix =
+    providers.gradleProperty("nyanpasuOutSuffix").orNull?.takeIf { it.isNotBlank() }
+        ?: System.getenv("NYANPASU_OUT_SUFFIX")?.takeIf { it.isNotBlank() }
+val fromAndroidStudio =
+    providers.gradleProperty("android.injected.invoked.from.ide").orNull == "true"
+val outDirName =
+    when {
+        nyanpasuOutSuffix != null -> "app-$nyanpasuOutSuffix"
+        fromAndroidStudio -> "app-ide"
+        else -> "app"
+    }
+layout.buildDirectory.set(
+    rootProject.layout.projectDirectory.dir(".out/$outDirName"),
+)
+
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    val raw = keystorePropertiesFile.readText(Charsets.UTF_8).removePrefix("\uFEFF")
+    keystoreProperties.load(raw.reader())
 }
 
 android {
@@ -20,8 +39,8 @@ android {
         applicationId = "com.kuroshimira.nyanpasu"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.2.2"
+        versionCode = 1
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,6 +87,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -77,6 +100,8 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 

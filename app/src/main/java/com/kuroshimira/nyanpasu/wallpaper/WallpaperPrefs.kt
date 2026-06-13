@@ -21,6 +21,8 @@ object WallpaperPrefs {
     const val DEFAULT_STYLE = 0
     const val KEY_LAST_FETCHED_URL = "LAST_FETCHED_URL"
     const val KEY_RECENT_FETCHED_URLS = "RECENT_FETCHED_URLS"
+    /** 当前主屏图对应的图源 URL，锁屏去重/complement 依赖此项。 */
+    const val KEY_HOME_SOURCE_URL = "HOME_SOURCE_URL"
     const val KEY_BUFFER_URL_A = "BUFFER_URL_A"
     const val KEY_BUFFER_URL_B = "BUFFER_URL_B"
     const val KEY_BUFFER_FP_A = "BUFFER_FP_A"
@@ -28,6 +30,11 @@ object WallpaperPrefs {
     const val RECENT_URL_MAX = 8
     const val KEY_FIRST_LAUNCH = "IS_FIRST_LAUNCH"
     const val KEY_PENDING_AUTO_FAILURE = "PENDING_AUTO_FAILURE"
+    const val KEY_DUAL_COMPLEMENT_COOLDOWN_UNTIL = "DUAL_COMPLEMENT_COOLDOWN_UNTIL"
+    const val KEY_LAST_HANDLED_URGENT_WORK_ID = "LAST_HANDLED_URGENT_WORK_ID"
+    const val KEY_LAST_HANDLED_COMPLEMENT_WORK_ID = "LAST_HANDLED_COMPLEMENT_WORK_ID"
+    const val KEY_LAST_SYSTEM_APPLY_STAMP = "LAST_SYSTEM_APPLY_STAMP"
+    private const val DUAL_COMPLEMENT_COOLDOWN_MS = 120_000L
 
     /** Tag 名与 strict 标记分隔符（避免 tag 含 `|` 时解析错位）。 */
     const val TAG_ENTRY_SEP = "\u001F"
@@ -93,22 +100,41 @@ object WallpaperPrefs {
         prefs.edit().putBoolean(KEY_FIRST_LAUNCH, false).apply()
     }
 
-    fun readRecentFetchedUrls(prefs: SharedPreferences): Set<String> {
-        val fromList =
+    /** 按写入顺序保留的 recent URL 列表（最旧 → 最新）。 */
+    fun readRecentFetchedUrlsList(prefs: SharedPreferences): List<String> {
+        val list =
             prefs.getString(KEY_RECENT_FETCHED_URLS, "")
                 ?.split('|')
                 ?.map { it.trim() }
                 ?.filter { it.isNotEmpty() }
-                ?.toMutableSet()
-                ?: mutableSetOf()
+                ?.toMutableList()
+                ?: mutableListOf()
         val legacy = prefs.getString(KEY_LAST_FETCHED_URL, "")?.trim().orEmpty()
-        if (legacy.isNotEmpty()) fromList.add(legacy)
-        return fromList
+        if (legacy.isNotEmpty() && legacy !in list) list.add(legacy)
+        return list
+    }
+
+    fun readRecentFetchedUrls(prefs: SharedPreferences): Set<String> =
+        readRecentFetchedUrlsList(prefs).toSet()
+
+    /** Refresh / 自动换壁纸搜索时排除近期已用过的图源（含当前主屏 URL）。 */
+    fun recentUrlsForDedup(prefs: SharedPreferences): Set<String> {
+        val recent = readRecentFetchedUrlsList(prefs).toMutableSet()
+        readHomeSourceUrl(prefs).takeIf { it.isNotEmpty() }?.let { recent.add(it) }
+        return recent
+    }
+
+    fun readHomeSourceUrl(prefs: SharedPreferences): String =
+        prefs.getString(KEY_HOME_SOURCE_URL, "")?.trim().orEmpty()
+
+    fun saveHomeSourceUrl(prefs: SharedPreferences, url: String) {
+        if (url.isBlank()) return
+        prefs.edit().putString(KEY_HOME_SOURCE_URL, url.trim()).apply()
     }
 
     fun appendRecentFetchedUrl(prefs: SharedPreferences, url: String) {
         if (url.isBlank()) return
-        val list = readRecentFetchedUrls(prefs).toMutableList()
+        val list = readRecentFetchedUrlsList(prefs).toMutableList()
         list.remove(url)
         list.add(url)
         while (list.size > RECENT_URL_MAX) list.removeAt(0)
@@ -122,6 +148,7 @@ object WallpaperPrefs {
         prefs.edit()
             .remove(KEY_RECENT_FETCHED_URLS)
             .remove(KEY_LAST_FETCHED_URL)
+            .remove(KEY_HOME_SOURCE_URL)
             .apply()
     }
 
@@ -208,6 +235,86 @@ object WallpaperPrefs {
     fun consumePendingAutoFailure(prefs: SharedPreferences): Boolean {
         if (!prefs.getBoolean(KEY_PENDING_AUTO_FAILURE, false)) return false
         prefs.edit().remove(KEY_PENDING_AUTO_FAILURE).apply()
+        return true
+    }
+
+    fun isDualComplementCooldown(prefs: SharedPreferences): Boolean =
+        System.currentTimeMillis() < prefs.getLong(KEY_DUAL_COMPLEMENT_COOLDOWN_UNTIL, 0L)
+
+    fun setDualComplementCooldown(prefs: SharedPreferences) {
+        prefs.edit()
+            .putLong(
+                KEY_DUAL_COMPLEMENT_COOLDOWN_UNTIL,
+                System.currentTimeMillis() + DUAL_COMPLEMENT_COOLDOWN_MS,
+            )
+            .apply()
+    }
+
+    fun clearDualComplementCooldown(prefs: SharedPreferences) {
+        prefs.edit().remove(KEY_DUAL_COMPLEMENT_COOLDOWN_UNTIL).apply()
+    }
+
+    fun readLastHandledUrgentWorkId(prefs: SharedPreferences): String? =
+        prefs.getString(KEY_LAST_HANDLED_URGENT_WORK_ID, null)?.takeIf { it.isNotBlank() }
+
+    fun saveLastHandledUrgentWorkId(prefs: SharedPreferences, workId: java.util.UUID) {
+        prefs.edit().putString(KEY_LAST_HANDLED_URGENT_WORK_ID, workId.toString()).apply()
+    }
+
+    fun readLastHandledComplementWorkId(prefs: SharedPreferences): String? =
+        prefs.getString(KEY_LAST_HANDLED_COMPLEMENT_WORK_ID, null)?.takeIf { it.isNotBlank() }
+
+    fun saveLastHandledComplementWorkId(prefs: SharedPreferences, workId: java.util.UUID) {
+        prefs.edit().putString(KEY_LAST_HANDLED_COMPLEMENT_WORK_ID, workId.toString()).apply()
+    }
+
+    fun needsSystemSync(context: Context): Boolean {
+        val prefs = prefs(context)
+        val appliedStamp = prefs.getLong(KEY_LAST_SYSTEM_APPLY_STAMP, 0L)
+        val home = WallpaperFiles.homeFile(context)
+        val lock = WallpaperFiles.lockFile(context)
+        val latest =
+            maxOf(
+                if (home.exists()) home.lastModified() else 0L,
+                if (lock.exists()) lock.lastModified() else 0L,
+            )
+        return latest > appliedStamp
+    }
+
+    fun markSystemSynced(context: Context) {
+        prefs(context).edit().putLong(KEY_LAST_SYSTEM_APPLY_STAMP, System.currentTimeMillis()).apply()
+    }
+
+    /** 仅当当前模式要求的 apply 目标全部成功时才标记已同步。 */
+    fun markSystemSyncedIfComplete(
+        context: Context,
+        homeState: Int,
+        lockState: Int,
+        result: WallpaperApplyResult,
+    ) {
+        if (!applyOutcomeComplete(homeState, lockState, result)) return
+        markSystemSynced(context)
+    }
+
+    fun applyOutcomeComplete(
+        homeState: Int,
+        lockState: Int,
+        result: WallpaperApplyResult,
+    ): Boolean {
+        if (WallpaperTargetMode.isDualMode(homeState, lockState)) {
+            return result.fullySucceeded
+        }
+        if (WallpaperTargetMode.isSyncMode(homeState, lockState) &&
+            homeState > 0 &&
+            lockState > 0
+        ) {
+            return result.fullySucceeded
+        }
+        if (homeState > 0 && lockState > 0) {
+            return result.homeOk && result.lockOk
+        }
+        if (homeState > 0) return result.homeOk
+        if (lockState > 0) return result.lockOk
         return true
     }
 }

@@ -13,6 +13,7 @@ import com.kuroshimira.nyanpasu.databinding.ActivityMainBinding
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplier
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperFiles
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperTargetMode
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 import com.kuroshimira.nyanpasu.work.PrefetchCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +55,15 @@ class PreviewController(
         val homeFile = WallpaperFiles.homeFile(activity)
         val lockFile = WallpaperFiles.lockFile(activity)
         val targetFile = if (state.isPreviewingHome) homeFile else lockFile
-        val finalFile = if (targetFile.exists()) targetFile else if (homeFile.exists()) homeFile else null
+        val dual = WallpaperTargetMode.isDualMode(state.homeState, state.lockState)
+        val finalFile =
+            when {
+                targetFile.exists() -> targetFile
+                dual && !state.isPreviewingHome -> null
+                state.isPreviewingHome && homeFile.exists() -> homeFile
+                !dual && homeFile.exists() -> homeFile
+                else -> null
+            }
 
         val generation = ++previewLoadGeneration
         if (finalFile == null) {
@@ -90,16 +99,24 @@ class PreviewController(
     }
 
     fun toggleDualPreviewIfPossible(): Boolean {
-        val homeFile = WallpaperFiles.homeFile(activity)
-        val lockFile = WallpaperFiles.lockFile(activity)
-        val isDualMode = (state.homeState != state.lockState) && (state.homeState > 0 && state.lockState > 0)
-        if (!isDualMode || !homeFile.exists() || !lockFile.exists()) return false
+        if (!WallpaperTargetMode.isDualMode(state.homeState, state.lockState)) return false
         state.isPreviewingHome = !state.isPreviewingHome
+        binding.ivPreview.setScale(1f, false)
         binding.ivPreview.animate().alpha(0.5f).setDuration(100).withEndAction {
             loadPreview()
             binding.ivPreview.animate().alpha(1f).setDuration(100).start()
         }.start()
         return true
+    }
+
+    fun bindPreviewSwitch(onToggle: () -> Unit) {
+        binding.tvViewIndicator.isClickable = true
+        binding.tvViewIndicator.isFocusable = true
+        binding.tvViewIndicator.setOnClickListener { onToggle() }
+
+        val photoView = binding.ivPreview
+        photoView.setOnPhotoTapListener { _, _, _ -> onToggle() }
+        photoView.setOnViewTapListener { _, _, _ -> onToggle() }
     }
 
     fun applyCurrentVisibleToTarget(flag: Int) {
@@ -166,8 +183,7 @@ class PreviewController(
     }
 
     private fun updateIndicator() {
-        val isDualMode =
-            (state.homeState != state.lockState) && (state.homeState > 0 && state.lockState > 0)
+        val isDualMode = WallpaperTargetMode.isDualMode(state.homeState, state.lockState)
         if (!isDualMode) {
             binding.tvViewIndicator.visibility = View.GONE
             return
@@ -191,8 +207,10 @@ class PreviewController(
             homeFile
         } else if (lockFile.exists() && lockFile.length() > 0L) {
             lockFile
-        } else {
+        } else if (!WallpaperTargetMode.isDualMode(state.homeState, state.lockState) && homeFile.exists()) {
             homeFile
+        } else {
+            lockFile
         }
     }
 
@@ -200,8 +218,14 @@ class PreviewController(
         val homeFile = WallpaperFiles.homeFile(activity)
         val lockFile = WallpaperFiles.lockFile(activity)
         val sourceFile = if (flag == WallpaperManager.FLAG_SYSTEM) homeFile else lockFile
-        val finalFile = if (sourceFile.exists()) sourceFile else homeFile
-        if (!finalFile.exists()) return
+        val dual = WallpaperTargetMode.isDualMode(state.homeState, state.lockState)
+        val finalFile =
+            when {
+                sourceFile.exists() -> sourceFile
+                dual && flag == WallpaperManager.FLAG_LOCK -> return
+                homeFile.exists() -> homeFile
+                else -> return
+            }
         var bitmap: Bitmap? = null
         try {
             bitmap = withContext(Dispatchers.IO) { PreviewHelpers.decode(finalFile) } ?: return
@@ -219,9 +243,9 @@ class PreviewController(
         if (activity.isFinishing) {
             return WallpaperApplyResult(homeOk = false, lockOk = false)
         }
-        val sync = WallpaperApplier.isSyncMode(state.homeState, state.lockState)
+        val dual = WallpaperTargetMode.isDualMode(state.homeState, state.lockState)
         val lockBitmap =
-            if (!sync && state.lockState == 2 && flag == WallpaperManager.FLAG_LOCK) {
+            if (dual && flag == WallpaperManager.FLAG_LOCK) {
                 bitmap
             } else {
                 null

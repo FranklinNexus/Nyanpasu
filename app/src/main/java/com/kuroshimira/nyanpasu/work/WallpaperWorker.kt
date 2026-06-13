@@ -1,4 +1,6 @@
 package com.kuroshimira.nyanpasu.work
+import com.kuroshimira.nyanpasu.network.AppHttpClient
+import com.kuroshimira.nyanpasu.network.ImageUrlFallback
 import com.kuroshimira.nyanpasu.network.NetworkImageLoader
 import com.kuroshimira.nyanpasu.network.NetworkStatus
 import com.kuroshimira.nyanpasu.network.WallpaperUrlPolicy
@@ -9,6 +11,7 @@ import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -19,14 +22,17 @@ import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.Request
 
 class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
     CoroutineWorker(appContext, workerParams) {
 
     companion object {
-        private const val DOWNLOAD_RETRY = 4
-        private const val DOWNLOAD_RETRY_DELAY_MS = 600L
+        private const val DOWNLOAD_RETRY = 3
+        private const val DOWNLOAD_RETRY_DELAY_MS = 800L
         private const val TAG = "WallpaperWorker"
 
         @Volatile
@@ -61,6 +67,37 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
         if ((isAuto || isUrgent) && !WallpaperPrefs.canApplyWallpaper(prefs)) {
             Log.w(TAG, "Skipped: Home and Lock both off")
             return Result.success()
+        }
+
+        val complementLock = inputData.getBoolean("COMPLEMENT_LOCK_ONLY", false)
+        if (complementLock) {
+            if (!NetworkStatus.shouldAttemptNetworkWork(applicationContext)) {
+                Log.w(TAG, "Complement skipped: no usable network")
+                return Result.failure()
+            }
+            if (WallpaperWriteGuard.isWriteInProgress()) {
+                return Result.retry()
+            }
+            return try {
+                val complementParams = resolveParams(isAuto = false, isUrgent = true, prefs)
+                val outcome =
+                    WallpaperJobRunner.runLockComplement(
+                        context = applicationContext,
+                        styleValue = complementParams.styleValue,
+                        strictTags = complementParams.strictTags,
+                        softTags = complementParams.softTags,
+                        homeState = complementParams.homeState,
+                        lockState = complementParams.lockState,
+                        r18Mode = complementParams.r18Mode,
+                        downloadBitmap = { url -> downloadBitmap(imageLoader(applicationContext), url) },
+                    )
+                if (outcome.ok) Result.success(outcome.toWorkData()) else Result.failure(outcome.toWorkData())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Complement worker failed", e)
+                Result.failure(WallpaperJobOutcome.downloadFailed().toWorkData())
+            }
         }
 
         if (isUrgent && WallpaperWriteGuard.isWriteInProgress()) {
@@ -103,7 +140,7 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
                 r18Mode = params.r18Mode,
                 isUrgent = isUrgent,
                 bufferSlot = bufferSlot,
-                recentUrls = WallpaperPrefs.readRecentFetchedUrls(prefs),
+                recentUrls = WallpaperPrefs.recentUrlsForDedup(prefs),
                 downloadBitmap = { url -> downloadBitmap(imageLoader(applicationContext), url) },
             )
             val output = outcome.toWorkData()
@@ -189,38 +226,65 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
     }
 
     private suspend fun downloadBitmap(loader: ImageLoader, url: String): Bitmap? {
-        if (!WallpaperUrlPolicy.isAllowed(url)) {
-            Log.e(TAG, "download blocked by url policy")
+        val candidates = ImageUrlFallback.candidates(url)
+        if (candidates.isEmpty()) {
+            Log.e(TAG, "download blocked: no allowed candidates")
             return null
         }
-        val shortUrl = if (url.length > 96) url.take(96) + "…" else url
         val maxDim = ImageProcessor.maxDownloadDimension(applicationContext)
-        for (attempt in 0 until DOWNLOAD_RETRY) {
-            try {
-                val request =
-                    ImageRequest.Builder(applicationContext)
-                        .data(url)
-                        .size(maxDim)
-                        .allowHardware(false)
-                        .build()
-                when (val outcome = loader.execute(request)) {
-                    is SuccessResult -> {
-                        val bmp = (outcome.drawable as? BitmapDrawable)?.bitmap
-                        if (bmp != null) {
-                            return bmp.copy(Bitmap.Config.ARGB_8888, false) ?: bmp
-                        }
-                        Log.w(TAG, "download: no bitmap (attempt ${attempt + 1}) $shortUrl")
-                    }
-                    else -> {
-                        Log.w(TAG, "download: ${outcome::class.simpleName} (attempt ${attempt + 1}) $shortUrl")
-                    }
+        for (candidate in candidates) {
+            val shortUrl = if (candidate.length > 96) candidate.take(96) + "…" else candidate
+            for (attempt in 0 until DOWNLOAD_RETRY) {
+                downloadViaCoil(loader, candidate, maxDim)?.let {
+                    Log.d(TAG, "download ok via coil $shortUrl")
+                    return it
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "download failed (attempt ${attempt + 1}) $shortUrl", e)
+                downloadViaOkHttp(candidate, maxDim)?.let {
+                    Log.d(TAG, "download ok via okhttp $shortUrl")
+                    return it
+                }
+                if (attempt < DOWNLOAD_RETRY - 1) delay(DOWNLOAD_RETRY_DELAY_MS)
             }
-            if (attempt < DOWNLOAD_RETRY - 1) delay(DOWNLOAD_RETRY_DELAY_MS)
+            Log.w(TAG, "download candidate failed: $shortUrl")
         }
-        Log.e(TAG, "download gave up: $shortUrl")
+        Log.e(TAG, "download gave up after ${candidates.size} candidate(s)")
         return null
     }
+
+    private suspend fun downloadViaCoil(loader: ImageLoader, url: String, maxDim: Int): Bitmap? {
+        return try {
+            val request =
+                ImageRequest.Builder(applicationContext)
+                    .data(url)
+                    .size(maxDim)
+                    .allowHardware(false)
+                    .build()
+            when (val outcome = loader.execute(request)) {
+                is SuccessResult -> {
+                    val bmp = (outcome.drawable as? BitmapDrawable)?.bitmap
+                    bmp?.copy(Bitmap.Config.ARGB_8888, false) ?: bmp
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "coil download failed $url: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun downloadViaOkHttp(url: String, maxDim: Int): Bitmap? =
+        withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder().url(url).get().build()
+                AppHttpClient.imageClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext null
+                    val bytes = response.body?.bytes() ?: return@withContext null
+                    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
+                    ImageProcessor.downscaleIfNeeded(decoded, maxDim)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "okhttp download failed $url: ${e.message}")
+                null
+            }
+        }
 }

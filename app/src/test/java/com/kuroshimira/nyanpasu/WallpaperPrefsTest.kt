@@ -89,6 +89,56 @@ class WallpaperPrefsTest {
         assertTrue(recent.contains("https://b.example/2"))
     }
 
+    @Test
+    fun readRecentFetchedUrlsList_preservesPipeOrder() {
+        val prefs = fakePrefs(
+            WallpaperPrefs.KEY_RECENT_FETCHED_URLS to "https://a.example/1|https://b.example/2|https://c.example/3",
+        )
+        val list = WallpaperPrefs.readRecentFetchedUrlsList(prefs)
+        assertEquals(
+            listOf(
+                "https://a.example/1",
+                "https://b.example/2",
+                "https://c.example/3",
+            ),
+            list,
+        )
+    }
+
+    @Test
+    fun readHomeSourceUrl_returnsTrimmedValue() {
+        val prefs = fakePrefs(WallpaperPrefs.KEY_HOME_SOURCE_URL to "  https://home.example/x  ")
+        assertEquals("https://home.example/x", WallpaperPrefs.readHomeSourceUrl(prefs))
+    }
+
+    @Test
+    fun applyOutcomeComplete_dualRequiresBothTargets() {
+        val ok = com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult(homeOk = true, lockOk = true)
+        val partial = com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult(homeOk = true, lockOk = false)
+        assertTrue(WallpaperPrefs.applyOutcomeComplete(1, 2, ok))
+        assertFalse(WallpaperPrefs.applyOutcomeComplete(1, 2, partial))
+    }
+
+    @Test
+    fun applyOutcomeComplete_homeOnlyNeedsHomeOk() {
+        val ok = com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult(homeOk = true, lockOk = false)
+        val fail = com.kuroshimira.nyanpasu.wallpaper.WallpaperApplyResult(homeOk = false, lockOk = false)
+        assertTrue(WallpaperPrefs.applyOutcomeComplete(1, 0, ok))
+        assertFalse(WallpaperPrefs.applyOutcomeComplete(1, 0, fail))
+    }
+
+    @Test
+    fun recentUrlsForDedup_includesHomeSource() {
+        val prefs = fakePrefs(
+            WallpaperPrefs.KEY_RECENT_FETCHED_URLS to "https://a.example/1",
+            WallpaperPrefs.KEY_HOME_SOURCE_URL to "https://b.example/home",
+        )
+        val recent = WallpaperPrefs.recentUrlsForDedup(prefs)
+        assertEquals(2, recent.size)
+        assertTrue(recent.contains("https://a.example/1"))
+        assertTrue(recent.contains("https://b.example/home"))
+    }
+
     private fun fakePrefs(vararg entries: Pair<String, Any>): SharedPreferences {
         val map = entries.toMap().toMutableMap()
         return object : SharedPreferences {

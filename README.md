@@ -57,7 +57,7 @@ Tired of the same boring wallpaper? Nyanpasu finds stunning ACG art for you — 
 * 🤖 **Soul Link Mascot** — Not a cold utility. She greets you, reacts to your tags, and drops 200+ anime one-liners. (Tap the logo 10× for a surprise 🎉)
 * 🖼️ **WYSIWYG Editor** — Pinch, pan, crop. **What you frame in the preview is exactly what lands on your phone.**
 * 🔍 **Smart Tags** — **`Strict 🔒`** = your oshi, every time. **`Soft 🎲`** = pleasant surprises. Genshin, BA, Azur Lane, Fate, Touhou — she knows the references.
-* ⚡ **Zero Latency** — Dual-buffer prefetch means **Instant Load** on most refreshes. Tap Refresh — wallpaper's already there.
+* ⚡ **Smart Prefetch** — Background buffer keeps the next wallpaper ready; **Refresh always fetches fresh art** from the network.
 * ⏰ **Set & Forget** — Auto-update at **7:00 AM daily**, or every **6 / 12 / 24 hours**. Wake up to something new.
 * 🛡️ **Privacy First** — No ads. No analytics. No cloud upload. Wallpapers live **only on your device.** [Privacy Policy →](PRIVACY_POLICY.md)
 * 📱 **OEM-Ready** — Tuned for Xiaomi, Huawei, OPPO, vivo & more — because "wallpaper set failed" shouldn't ruin your morning.

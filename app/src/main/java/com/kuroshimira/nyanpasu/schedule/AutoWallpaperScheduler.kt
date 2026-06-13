@@ -99,6 +99,7 @@ object AutoWallpaperScheduler {
         cancelScheduling(context)
         WorkManager.getInstance(context).cancelUniqueWork(WallpaperWorkNames.APPLY_URGENT)
         WorkManager.getInstance(context).cancelUniqueWork(WallpaperWorkNames.APPLY_AUTO)
+        WorkManager.getInstance(context).cancelUniqueWork(WallpaperWorkNames.APPLY_DUAL_COMPLEMENT)
     }
 
     fun onDailyAlarmFired(context: Context) {

@@ -1,4 +1,4 @@
-﻿package com.kuroshimira.nyanpasu.wallpaper
+package com.kuroshimira.nyanpasu.wallpaper
 
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -67,10 +67,10 @@ object WallpaperHistory {
             }
 
             val lockFile = WallpaperFiles.lockFile(context)
-            if (lockState == 2 && lockFile.exists() && lockFile.length() > 0L) {
+            if (WallpaperTargetMode.isDualMode(homeState, lockState) && lockFile.exists() && lockFile.length() > 0L) {
                 lockFile.copyTo(lockBackupFile(filesDir, id), overwrite = true)
                 backed = true
-            } else if (lockState >= 1 && homeState > 0 && home.exists() && home.length() > 0L) {
+            } else if (lockState >= WallpaperTargetMode.PINK && homeState > 0 && home.exists() && home.length() > 0L) {
                 home.copyTo(lockBackupFile(filesDir, id), overwrite = true)
                 backed = true
             }
@@ -122,11 +122,12 @@ object WallpaperHistory {
                 var homeBitmap = WallpaperFiles.homeFile(context).takeIf { it.exists() }?.let {
                     BitmapFactory.decodeFile(it.absolutePath)
                 }
-                var lockBitmap = if (lockState == 2 && lockBackup.exists()) {
-                    BitmapFactory.decodeFile(lockBackup.absolutePath)
-                } else {
-                    null
-                }
+                var lockBitmap =
+                    if (WallpaperTargetMode.isDualMode(homeState, lockState) && lockBackup.exists()) {
+                        BitmapFactory.decodeFile(lockBackup.absolutePath)
+                    } else {
+                        null
+                    }
 
                 try {
                     val bitmapForApply = when {
@@ -149,10 +150,11 @@ object WallpaperHistory {
                         Log.w(TAG, "undo apply partial failure homeOk=${result.homeOk} lockOk=${result.lockOk}")
                         return@withWriteLock UndoResult.ApplyFailed
                     }
-                    if (lockState == 2 && !result.lockOk) {
+                    if (WallpaperTargetMode.isDualMode(homeState, lockState) && !result.lockOk) {
                         return@withWriteLock UndoResult.ApplyFailed
                     }
 
+                    WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, result)
                     UndoResult.Restored
                 } finally {
                     homeBitmap?.takeIf { !it.isRecycled }?.recycle()

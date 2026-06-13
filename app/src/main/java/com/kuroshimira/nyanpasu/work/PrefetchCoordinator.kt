@@ -1,9 +1,10 @@
-﻿package com.kuroshimira.nyanpasu.work
+package com.kuroshimira.nyanpasu.work
 
 import android.graphics.BitmapFactory
 import com.kuroshimira.nyanpasu.R
 import com.kuroshimira.nyanpasu.wallpaper.ImageProcessor
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplier
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperTargetMode
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperFiles
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
@@ -30,6 +31,7 @@ class PrefetchCoordinator(
     interface Callbacks {
         fun enqueuePrefetch(slot: String)
         fun enqueueUrgentDownload()
+        fun enqueueLockComplement()
         fun reloadPreview()
         fun onWallpaperApplyFailed(message: String)
     }
@@ -53,6 +55,9 @@ class PrefetchCoordinator(
     fun hasAppliedWallpaper(): Boolean {
         val prefs = WallpaperPrefs.prefs(context)
         val (homeState, lockState) = WallpaperPrefs.readHomeLockState(prefs)
+        if (WallpaperTargetMode.isDualMode(homeState, lockState)) {
+            return WallpaperFiles.isDualWallpaperComplete(context)
+        }
         if (homeState > 0 && WallpaperFiles.hasHomeWallpaper(context)) return true
         if (lockState > 0) {
             val lock = WallpaperFiles.lockFile(context)
@@ -63,12 +68,19 @@ class PrefetchCoordinator(
 
     /** 预取完成 / 冷启动：尝试 buffer 或 lock-only 预取，必要时 urgent 下载。 */
     private suspend fun applyPrefetchIfNeeded(fallbackToUrgent: Boolean) {
-        if (hasAppliedWallpaper()) return
-        val prefs = WallpaperPrefs.prefs(context)
-        if (needsUrgentForIndependentLock(prefs)) {
+        if (!WallpaperFiles.isDualWallpaperComplete(context)) {
+            val prefs = WallpaperPrefs.prefs(context)
+            val (homeState, lockState) = WallpaperPrefs.readHomeLockState(prefs)
+            if (WallpaperTargetMode.isDualMode(homeState, lockState) &&
+                WallpaperFiles.hasHomeWallpaper(context)
+            ) {
+                callbacks.enqueueLockComplement()
+                return
+            }
             callbacks.enqueueUrgentDownload()
             return
         }
+        if (hasAppliedWallpaper()) return
         val ready = matchingPrefetchFile()
         if (ready != null) {
             if (applyBufferToHome(ready)) refillEmptySlots(force = true)
@@ -91,12 +103,7 @@ class PrefetchCoordinator(
 
     /** 独立锁屏（蓝灯）需双图，预取槽只有一张 → 走 urgent 下载。 */
     fun requiresDualWallpaperDownload(): Boolean =
-        needsUrgentForIndependentLock(WallpaperPrefs.prefs(context))
-
-    private fun needsUrgentForIndependentLock(prefs: SharedPreferences): Boolean {
-        val (homeState, lockState) = WallpaperPrefs.readHomeLockState(prefs)
-        return lockState == 2 && !WallpaperApplier.isSyncMode(homeState, lockState)
-    }
+        !WallpaperFiles.isDualWallpaperComplete(context)
 
     /** @param force true 时跳过 debounce（如用户手动 Refresh 成功后补槽） */
     fun refillEmptySlots(force: Boolean = false) {
@@ -109,7 +116,10 @@ class PrefetchCoordinator(
         } else {
             synchronized(refillLock) { lastRefillAtMs = System.currentTimeMillis() }
         }
-        if (!WallpaperPrefs.canApplyWallpaper(WallpaperPrefs.prefs(context))) return
+        val prefs = WallpaperPrefs.prefs(context)
+        if (!WallpaperPrefs.canApplyWallpaper(prefs)) return
+        val (homeState, lockState) = WallpaperPrefs.readHomeLockState(prefs)
+        if (WallpaperTargetMode.isDualMode(homeState, lockState)) return
         migrateIfNeeded()
         purgeStalePrefetchSlots()
         for (slot in listOf("a", "b")) {
@@ -139,8 +149,8 @@ class PrefetchCoordinator(
     /** @return 是否成功 promote 并 apply 到系统壁纸 */
     suspend fun applyBufferToHome(prefetch: File): Boolean {
         if (!prefetch.exists() || prefetch.length() == 0L) return false
-        if (needsUrgentForIndependentLock(WallpaperPrefs.prefs(context))) {
-            callbacks.enqueueUrgentDownload()
+        if (requiresDualWallpaperDownload()) {
+            callbacks.enqueueLockComplement()
             return false
         }
         var needsRefill = false
@@ -164,6 +174,7 @@ class PrefetchCoordinator(
             val prefs = WallpaperPrefs.prefs(context)
             WallpaperPrefs.readBufferSourceUrl(prefs, slot)?.let { sourceUrl ->
                 WallpaperPrefs.appendRecentFetchedUrl(prefs, sourceUrl)
+                WallpaperPrefs.saveHomeSourceUrl(prefs, sourceUrl)
             }
             WallpaperPrefs.clearBufferSourceUrl(prefs, slot)
 
@@ -183,7 +194,7 @@ class PrefetchCoordinator(
 
             val homeState = prefs.getInt(WallpaperPrefs.KEY_HOME_STATE, 1)
             val lockState = prefs.getInt(WallpaperPrefs.KEY_LOCK_STATE, 0)
-            val sync = WallpaperApplier.isSyncMode(homeState, lockState)
+            val sync = WallpaperTargetMode.isSyncMode(homeState, lockState)
 
             try {
                 if (sync && lockState > 0) {
@@ -199,6 +210,7 @@ class PrefetchCoordinator(
                 )
                 if (result.fullySucceeded) {
                     Log.d(TAG, "Wallpaper applied from prefetch buffer")
+                    WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, result)
                     callbacks.reloadPreview()
                     true
                 } else {
@@ -262,6 +274,7 @@ class PrefetchCoordinator(
                 )
                 if (result.fullySucceeded) {
                     Log.d(TAG, "Lock-only wallpaper applied from prefetch")
+                    WallpaperPrefs.markSystemSyncedIfComplete(context, homeState, lockState, result)
                     callbacks.reloadPreview()
                     true
                 } else {

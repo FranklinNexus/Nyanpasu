@@ -19,6 +19,7 @@ release/
 # Gradle files
 .gradle/
 build/
+.out/
 
 # Local configuration file (sdk path, etc)
 local.properties
@@ -82,3 +83,6 @@ lint/tmp/
 
 # Local History / editor snapshots (not part of the app)
 .history/
+
+# Local signing backup (never commit)
+.local/

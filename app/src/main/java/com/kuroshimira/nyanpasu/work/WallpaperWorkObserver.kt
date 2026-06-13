@@ -4,9 +4,7 @@ import com.kuroshimira.nyanpasu.schedule.AutoWallpaperScheduler
 import androidx.lifecycle.LifecycleOwner
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -24,9 +22,11 @@ class WallpaperWorkObserver(
         fun onPrefetchWorkSucceeded()
         fun onApplyUrgentInfosUpdated(infos: List<WorkInfo>)
         fun onAutoApplyInfosUpdated(infos: List<WorkInfo>)
+        fun onComplementInfosUpdated(infos: List<WorkInfo>)
         fun onPeriodicInfosUpdated(infos: List<WorkInfo>)
         fun onApplyUrgentFinished(succeeded: Boolean, info: WorkInfo)
         fun onAutoApplyFinished(succeeded: Boolean, info: WorkInfo)
+        fun onComplementFinished(succeeded: Boolean, info: WorkInfo)
     }
 
     private val lastWorkStates = mutableMapOf<String, WorkInfo.State>()
@@ -40,30 +40,46 @@ class WallpaperWorkObserver(
     var lastAutoApplyInfos: List<WorkInfo> = emptyList()
         private set
 
+    var lastComplementInfos: List<WorkInfo> = emptyList()
+        private set
+
     fun register() {
         observeAutoWorkCompletion(AutoWallpaperScheduler.WORK_PERIODIC)
         observePrefetchWorkCompletion()
         observeApplyWork(WallpaperWorkNames.APPLY_URGENT, manualOnly = true)
         observeApplyWork(WallpaperWorkNames.APPLY_AUTO, manualOnly = false)
+        observeComplementWork()
         observePeriodicApplyBusy()
     }
 
-    fun syncOnResume(scope: CoroutineScope) {
-        scope.launch(Dispatchers.Default) {
-            val wm = workManager
-            val applyInfos = wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_URGENT).get()
-            val autoInfos = wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_AUTO).get()
-            val periodicInfos =
-                wm.getWorkInfosForUniqueWork(AutoWallpaperScheduler.WORK_PERIODIC).get()
-            withContext(Dispatchers.Main) {
-                if (callbacks.isFinishing()) return@withContext
-                lastApplyUrgentInfos = applyInfos
-                lastAutoApplyInfos = autoInfos
-                lastPeriodicInfos = periodicInfos
-                callbacks.onApplyUrgentInfosUpdated(applyInfos)
-                callbacks.onAutoApplyInfosUpdated(autoInfos)
-                callbacks.onPeriodicInfosUpdated(periodicInfos)
+    suspend fun syncOnResume() {
+        val wm = workManager
+        val applyInfos =
+            withContext(Dispatchers.Default) {
+                wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_URGENT).get()
             }
+        val autoInfos =
+            withContext(Dispatchers.Default) {
+                wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_AUTO).get()
+            }
+        val complementInfos =
+            withContext(Dispatchers.Default) {
+                wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_DUAL_COMPLEMENT).get()
+            }
+        val periodicInfos =
+            withContext(Dispatchers.Default) {
+                wm.getWorkInfosForUniqueWork(AutoWallpaperScheduler.WORK_PERIODIC).get()
+            }
+        withContext(Dispatchers.Main) {
+            if (callbacks.isFinishing()) return@withContext
+            lastApplyUrgentInfos = applyInfos
+            lastAutoApplyInfos = autoInfos
+            lastComplementInfos = complementInfos
+            lastPeriodicInfos = periodicInfos
+            callbacks.onApplyUrgentInfosUpdated(applyInfos)
+            callbacks.onAutoApplyInfosUpdated(autoInfos)
+            callbacks.onComplementInfosUpdated(complementInfos)
+            callbacks.onPeriodicInfosUpdated(periodicInfos)
         }
     }
 
@@ -89,6 +105,28 @@ class WallpaperWorkObserver(
         WallpaperWorkNames.isApplyUrgentActive(lastApplyUrgentInfos) ||
             WallpaperWorkNames.isApplyUrgentActive(lastAutoApplyInfos) ||
             WallpaperWorkNames.isPeriodicApplyRunning(lastPeriodicInfos)
+
+    fun isComplementWorkBusyCached(): Boolean =
+        WallpaperWorkNames.isApplyUrgentActive(lastComplementInfos)
+
+    private fun observeComplementWork() {
+        workManager.getWorkInfosForUniqueWorkLiveData(WallpaperWorkNames.APPLY_DUAL_COMPLEMENT).observe(owner) { infos ->
+            if (callbacks.isFinishing()) return@observe
+            lastComplementInfos = infos
+            callbacks.onComplementInfosUpdated(infos)
+            infos.forEach { info ->
+                val key = "${WallpaperWorkNames.APPLY_DUAL_COMPLEMENT}:${info.id}"
+                val prev = trackWorkState(key, info.state)
+                if (prev != null && !prev.isFinished && info.state.isFinished) {
+                    when (info.state) {
+                        WorkInfo.State.SUCCEEDED -> callbacks.onComplementFinished(true, info)
+                        WorkInfo.State.FAILED -> callbacks.onComplementFinished(false, info)
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
 
     private fun observeAutoWorkCompletion(uniqueWorkName: String) {
         workManager.getWorkInfosForUniqueWorkLiveData(uniqueWorkName).observe(owner) { infos ->

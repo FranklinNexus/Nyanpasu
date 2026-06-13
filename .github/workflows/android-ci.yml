@@ -38,7 +38,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: nyanpasu-debug-apk
-        path: app/build/outputs/apk/debug/*.apk
+        path: .out/app/outputs/apk/debug/*.apk
         retention-days: 7
         
     - name: 📊 Upload Lint Report
@@ -46,5 +46,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: lint-report
-        path: app/build/reports/lint-results-debug.html
+        path: .out/app/reports/lint-results-debug.html
         retention-days: 7

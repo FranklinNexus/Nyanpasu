@@ -75,11 +75,13 @@
                 android:background="@drawable/bg_glass_tag"
                 android:paddingHorizontal="16dp"
                 android:paddingVertical="6dp"
-                android:text="Home Screen"
+                android:text="主屏预览"
                 android:textColor="#FFFFFF"
                 android:textSize="12sp"
                 android:textStyle="bold"
-                android:visibility="gone"/>
+                android:visibility="gone"
+                android:clickable="true"
+                android:focusable="true"/>
                 
             <ProgressBar
                 android:id="@+id/progressBar"
@@ -277,7 +279,19 @@
                 android:inputType="text"
                 android:imeOptions="actionDone"
                 android:singleLine="true"
-                android:layout_marginBottom="16dp"/>
+                android:layout_marginBottom="8dp"/>
+
+            <TextView
+                android:id="@+id/tvStatusHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/bg_input_field"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone"/>
 
             <Button
                 android:id="@+id/btnUpdate"

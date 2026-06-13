@@ -9,37 +9,68 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      
+
     - name: ☕ Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
-        
+
     - name: 🐘 Grant execute permission for gradlew
       run: chmod +x gradlew
-      
+
+    - name: 🔐 Configure release signing
+      if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+        cat > keystore.properties <<EOF
+        storeFile=release.jks
+        storePassword=$KEYSTORE_PASSWORD
+        keyAlias=$KEY_ALIAS
+        keyPassword=$KEY_PASSWORD
+        EOF
+
+    - name: 🧪 Run unit tests
+      run: ./gradlew testReleaseUnitTest
+
     - name: 🔨 Build Release APK
       run: ./gradlew assembleRelease
-      
+
+    - name: ✅ Verify signed APK
+      run: |
+        APK=$(ls .out/app/outputs/apk/release/*.apk | head -n 1)
+        echo "Built: $APK"
+        if echo "$APK" | grep -q unsigned; then
+          echo "::error::Release APK is unsigned. Add GitHub secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD"
+          exit 1
+        fi
+        cp "$APK" .out/app/outputs/apk/release/app-release.apk
+
     - name: 📝 Extract Release Notes
       id: release_notes
       run: |
-        # 从 CHANGELOG.md 提取当前版本的更新日志
         VERSION=${GITHUB_REF#refs/tags/v}
-        awk "/^## \[?$VERSION\]?/,/^## \[?[0-9]/" CHANGELOG.md | sed '1d;$d' > release_notes.txt
-        
+        awk "/^## \\[$VERSION\\]/,/^## \\[[0-9]/" CHANGELOG.md | sed '1d;$d' > release_notes.txt
+        if [ ! -s release_notes.txt ]; then
+          echo "::error::No CHANGELOG section for version $VERSION"
+          exit 1
+        fi
+
     - name: 🚀 Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         body_path: release_notes.txt
-        files: |
-          app/build/outputs/apk/release/*.apk
+        files: .out/app/outputs/apk/release/app-release.apk
         draft: false
         prerelease: false
       env:

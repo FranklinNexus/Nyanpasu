@@ -3,6 +3,7 @@ package com.kuroshimira.nyanpasu.wallpaper
 import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ object WallpaperApplier {
     private const val TAG = "WallpaperApplier"
 
     fun isSyncMode(homeState: Int, lockState: Int): Boolean =
-        (lockState == 1) || (lockState == 2 && homeState == 2)
+        WallpaperTargetMode.isSyncMode(homeState, lockState)
 
     /** 低层写入；一般应通过 [applyForStates] 调用以走 OEM 策略。 */
     suspend fun setWallpaper(context: Context, bitmap: Bitmap, which: Int): Boolean =
@@ -39,10 +40,10 @@ object WallpaperApplier {
         lockBitmap: Bitmap? = null,
     ): WallpaperApplyResult {
         val sync = isSyncMode(homeState, lockState)
-        val needsIndependentLock = !sync && lockState == 2
+        val dual = WallpaperTargetMode.isDualMode(homeState, lockState)
 
-        if (needsIndependentLock && lockBitmap == null) {
-            Log.w(TAG, "Skip apply: independent lock enabled but no lock bitmap")
+        if (dual && lockBitmap == null) {
+            Log.w(TAG, "Skip apply: dual mode but no lock bitmap")
             return WallpaperApplyResult(homeOk = false, lockOk = false)
         }
 
@@ -63,7 +64,7 @@ object WallpaperApplier {
             }
         }
 
-        if (needsIndependentLock && lockBitmap != null) {
+        if (dual && lockBitmap != null) {
             when {
                 homeState > 0 -> {
                     if (!homeOk) {
@@ -85,6 +86,59 @@ object WallpaperApplier {
                 "oem=${WallpaperOemCompat.syncApplyOrder()} homeOk=$homeOk lockOk=$lockOk",
         )
         return WallpaperApplyResult(homeOk = homeOk, lockOk = lockOk)
+    }
+
+    /** 将已保存的主/锁屏文件写入系统壁纸（预览与系统不同步时补救）。 */
+    suspend fun applyFromStoredFiles(
+        context: Context,
+        homeState: Int,
+        lockState: Int,
+    ): WallpaperApplyResult {
+        val dual = WallpaperTargetMode.isDualMode(homeState, lockState)
+        val sync = isSyncMode(homeState, lockState)
+        val homeFile = WallpaperFiles.homeFile(context)
+        val lockFile = WallpaperFiles.lockFile(context)
+
+        var homeBitmap: Bitmap? = null
+        var lockBitmap: Bitmap? = null
+        return try {
+            when {
+                dual -> {
+                    if (!homeFile.exists() || !lockFile.exists()) {
+                        return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    }
+                    homeBitmap = decodeStored(context, homeFile) ?: return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    lockBitmap = decodeStored(context, lockFile) ?: return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    applyForStates(context, homeBitmap, homeState, lockState, lockBitmap)
+                }
+                homeState > 0 && lockState > 0 && sync -> {
+                    if (!homeFile.exists()) return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    homeBitmap = decodeStored(context, homeFile) ?: return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    applyForStates(context, homeBitmap, homeState, lockState)
+                }
+                homeState > 0 -> {
+                    if (!homeFile.exists()) return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    homeBitmap = decodeStored(context, homeFile) ?: return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    applyForStates(context, homeBitmap, homeState, lockState)
+                }
+                lockState > 0 -> {
+                    if (!lockFile.exists()) return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    lockBitmap = decodeStored(context, lockFile) ?: return WallpaperApplyResult(homeOk = false, lockOk = false)
+                    applyForStates(context, lockBitmap, homeState, lockState)
+                }
+                else -> WallpaperApplyResult(homeOk = true, lockOk = true)
+            }
+        } finally {
+            homeBitmap?.takeIf { !it.isRecycled }?.recycle()
+            lockBitmap
+                ?.takeIf { it !== homeBitmap && !it.isRecycled }
+                ?.recycle()
+        }
+    }
+
+    private fun decodeStored(context: Context, file: java.io.File): Bitmap? {
+        val raw = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+        return ImageProcessor.downscaleIfNeeded(raw, ImageProcessor.maxDownloadDimension(context))
     }
 
     private suspend fun applySyncWallpaper(
@@ -188,13 +242,17 @@ object WallpaperApplier {
         }
     }
 
-    /** API 24+ 轻量校验；不支持时视为成功（setBitmap 未抛异常）。 */
+    /** API 24+ 轻量校验；部分 OEM getWallpaperId 误报 -1，setBitmap 未抛错则视为成功。 */
     private fun verifyApplied(context: Context, which: Int): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return true
         return try {
             val id = WallpaperManager.getInstance(context.applicationContext).getWallpaperId(which)
-            id != -1
-        } catch (_: Exception) {
+            if (id == -1) {
+                Log.w(TAG, "getWallpaperId=-1 which=$which; assuming apply ok")
+            }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "verifyApplied skipped which=$which: ${e.message}")
             true
         }
     }

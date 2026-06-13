@@ -1,9 +1,11 @@
-﻿package com.kuroshimira.nyanpasu.search
+package com.kuroshimira.nyanpasu.search
 
 import android.content.Context as AndroidContext
 import android.util.Log
 import com.kuroshimira.nyanpasu.network.NetworkEnvironment
 import com.kuroshimira.nyanpasu.network.NetworkRoute
+import com.kuroshimira.nyanpasu.network.WallpaperImageIdentity
+import com.kuroshimira.nyanpasu.network.WallpaperUrlPolicy
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -47,11 +49,11 @@ internal object SetuSearchEngine {
     ): String {
         val route = NetworkEnvironment.classify(androidCtx)
         val patched = searchCtx.copy(recentUrls = searchCtx.recentUrls + avoidUrl)
-        repeat(5) { attempt ->
+        repeat(8) { attempt ->
             coroutineContext.ensureActive()
             val url = searchWithRoute(patched, primaryR18, route)
-            if (url.isNotEmpty() && url != avoidUrl) return url
-            if (attempt < 4) delay(280)
+            if (url.isNotEmpty() && !WallpaperImageIdentity.isSameImage(url, avoidUrl)) return url
+            if (attempt < 7) delay(280)
         }
         return ""
     }
@@ -64,7 +66,7 @@ internal object SetuSearchEngine {
                 searchCtx
             }
         if (normalized.strictTags.isEmpty()) {
-            return fallbackUntagged(normalized, primaryR18, route)
+            return fallbackUntagged(normalized, primaryR18, normalized.recentUrls, route)
         }
 
         val variants = TagExpander.expand(normalized.strictTags)
@@ -103,7 +105,7 @@ internal object SetuSearchEngine {
         }?.let { return it }
 
         return budget.run(SearchTierBudget.TIER4_MS) {
-            fallbackUntagged(normalized, primaryR18, route)
+            fallbackUntagged(normalized, primaryR18, recent, route)
         } ?: ""
     }
 
@@ -239,7 +241,12 @@ internal object SetuSearchEngine {
         return null
     }
 
-    private suspend fun fallbackUntagged(ctx: Context, primaryR18: Int, route: NetworkRoute): String {
+    private suspend fun fallbackUntagged(
+        ctx: Context,
+        primaryR18: Int,
+        recentUrls: Set<String>,
+        route: NetworkRoute,
+    ): String {
         for (r18 in SearchR18Policy.fallbackLoliconChain(primaryR18)) {
             coroutineContext.ensureActive()
             for (relaxed in listOf(false, true)) {
@@ -255,7 +262,7 @@ internal object SetuSearchEngine {
                             ctx.strictTags,
                             route,
                         )
-                    if (url.isNotEmpty()) return url
+                    if (accept(url, recentUrls, preferFresh = true)) return url
                     delay(18)
                 }
             }
@@ -270,10 +277,10 @@ internal object SetuSearchEngine {
                     ctx.strictTags,
                     route,
                 )
-            if (bare.isNotEmpty()) return bare
+            if (accept(bare, recentUrls, preferFresh = true)) return bare
             repeat(2) {
                 val url = SetuFetchPipeline.fetchBare(r18, route)
-                if (url.isNotEmpty()) return url
+                if (accept(url, recentUrls, preferFresh = true)) return url
             }
         }
         return ""
@@ -281,7 +288,15 @@ internal object SetuSearchEngine {
 
     private fun accept(url: String, recentUrls: Set<String>, preferFresh: Boolean): Boolean {
         if (url.isEmpty()) return false
-        if (!preferFresh) return true
-        return url !in recentUrls
+        if (!WallpaperUrlPolicy.isAllowed(url)) {
+            Log.w(TAG, "reject disallowed url host")
+            return false
+        }
+        if (preferFresh && recentUrls.isNotEmpty() &&
+            !WallpaperImageIdentity.differsFromAny(url, recentUrls)
+        ) {
+            return false
+        }
+        return true
     }
 }

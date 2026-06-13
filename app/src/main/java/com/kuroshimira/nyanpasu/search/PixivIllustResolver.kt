@@ -2,6 +2,7 @@ package com.kuroshimira.nyanpasu.search
 
 import android.util.Log
 import com.kuroshimira.nyanpasu.network.AppHttpClient
+import com.kuroshimira.nyanpasu.network.WallpaperUrlPolicy
 import org.json.JSONObject
 
 /**
@@ -23,12 +24,24 @@ object PixivIllustResolver {
         fallback: String = "",
         preferMirrorFirst: Boolean = false,
     ): String {
+        if (fallback.isNotEmpty() && WallpaperUrlPolicy.isAllowed(fallback)) {
+            if (AppHttpClient.probeUrl(fallback)) {
+                Log.d(TAG, "use lolicon regular url")
+                return fallback
+            }
+            Log.d(TAG, "lolicon regular probe failed, resolving pid=$pixivId")
+        }
         if (pixivId <= 0L) return fallback
         if (preferMirrorFirst) {
             resolveViaMirror(pixivId)?.let { return it }
             resolveViaAjax(pixivId)?.let { return it }
         } else {
-            resolveViaAjax(pixivId)?.let { return it }
+            resolveViaAjax(pixivId)?.let { resolved ->
+                if (WallpaperUrlPolicy.isAllowed(resolved) && AppHttpClient.probeUrl(resolved)) {
+                    return resolved
+                }
+                Log.d(TAG, "ajax url probe failed, trying mirrors")
+            }
             resolveViaMirror(pixivId)?.let { return it }
         }
         return fallback

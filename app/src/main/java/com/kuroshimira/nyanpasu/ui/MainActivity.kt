@@ -3,9 +3,11 @@
 import com.kuroshimira.nyanpasu.R
 import com.kuroshimira.nyanpasu.network.NetworkStatus
 import com.kuroshimira.nyanpasu.schedule.AutoWallpaperScheduler
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperApplier
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperFiles
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperHistory
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperTargetMode
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 import com.kuroshimira.nyanpasu.work.WallpaperWorkNames
 import android.app.WallpaperManager
@@ -19,6 +21,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.work.Data
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import com.kuroshimira.nyanpasu.databinding.ActivityMainBinding
 
@@ -36,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mascot: MascotController
     private lateinit var tagChips: TagChipController
     private lateinit var preview: PreviewController
+    private lateinit var statusHint: StatusHintController
+    private var systemSyncJob: Job? = null
 
     private val refreshWork get() = workBindings.refreshWork
     private val prefetchCoordinator get() = workBindings.prefetchCoordinator
@@ -45,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        statusHint = StatusHintController(this, binding)
 
         WallpaperHistory.ensureLoaded(this)
 
@@ -76,8 +82,10 @@ class MainActivity : AppCompatActivity() {
                 scope = lifecycleScope,
                 previewState = previewState,
                 preview = { preview },
+                statusHint = { statusHint },
                 scheduleReschedule = { scheduleUi.rescheduleIfEnabled() },
-                workInputBuilder = { urgent, slot -> buildWallpaperWorkInput(urgent, slot) },
+                workInputBuilder = { urgent, slot, complement -> buildWallpaperWorkInput(urgent, slot, complement) },
+                syncStoredWallpapersToSystem = { syncStoredWallpapersToSystem() },
             )
         workBindings.wire(owner = this)
 
@@ -110,6 +118,13 @@ class MainActivity : AppCompatActivity() {
             )
 
         preview.setupAspectRatio()
+        preview.bindPreviewSwitch {
+            if (preview.toggleDualPreviewIfPossible()) {
+                binding.ivPreview.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            } else {
+                wallpaperUi.bounceAnimate(binding.previewCard)
+            }
+        }
 
         val prefs = WallpaperPrefs.prefs(this)
         previewState.homeState = prefs.getInt(WallpaperPrefs.KEY_HOME_STATE, 1)
@@ -144,6 +159,7 @@ class MainActivity : AppCompatActivity() {
         if (!WallpaperPrefs.isFirstLaunch(prefs) && !prefetchCoordinator.hasAppliedWallpaper()) {
             prefetchCoordinator.ensureInitialWallpaper()
         }
+        ensureDualWallpaperIfNeeded()
 
         Handler(Looper.getMainLooper()).postDelayed({
             mascot.speak(getString(R.string.mascot_greeting))
@@ -155,13 +171,6 @@ class MainActivity : AppCompatActivity() {
         binding.ivLogo.setOnClickListener {
             wallpaperUi.bounceAnimate(it)
             mascot.onLogoClick()
-        }
-        binding.ivPreview.setOnClickListener {
-            if (!preview.toggleDualPreviewIfPossible()) {
-                wallpaperUi.bounceAnimate(binding.previewCard)
-            } else {
-                binding.ivPreview.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-            }
         }
         binding.tvScheduleInfo.setOnClickListener { scheduleUi.showScheduleDialog() }
 
@@ -234,50 +243,51 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnUpdate.setOnClickListener {
             wallpaperUi.bounceAnimate(it)
-            if (refreshWork.manualRefreshInProgress || refreshWork.isApplyWorkBusy() ||
-                WallpaperWriteGuard.isWriteInProgress()
-            ) {
+            if (previewState.homeState == 0 && previewState.lockState == 0) {
+                Toast.makeText(this, getString(R.string.toast_auto_need_target), Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            val ready = WallpaperFiles.firstReadyPrefetch(this, currentPrefetchFingerprint())
-            val canInstantLoad = ready != null && !prefetchCoordinator.requiresDualWallpaperDownload()
-            if (canInstantLoad) {
-                lifecycleScope.launch {
-                    if (workObserver.isApplyWorkBusy() || WallpaperWriteGuard.isWriteInProgress()) {
-                        refreshWork.startOneTimeWork(isUrgent = true)
-                        return@launch
-                    }
-                    val applied = prefetchCoordinator.applyBufferToHome(ready!!)
-                    if (applied) {
-                        Toast.makeText(this@MainActivity, getString(R.string.status_instant_load), Toast.LENGTH_SHORT)
-                            .show()
-                    }
-                    prefetchCoordinator.refillEmptySlots(force = true)
-                }
-            } else {
-                if (!NetworkStatus.isConnected(this)) {
-                    Toast.makeText(this, getString(R.string.error_network), Toast.LENGTH_LONG).show()
-                    return@setOnClickListener
-                }
-                refreshWork.startOneTimeWork(isUrgent = true)
+            if (!NetworkStatus.isConnected(this)) {
+                Toast.makeText(this, getString(R.string.error_network), Toast.LENGTH_LONG).show()
+                return@setOnClickListener
             }
+            statusHint.clear()
+            refreshWork.startManualRefresh()
         }
 
         binding.btnToggleHome.setOnClickListener {
             wallpaperUi.bounceAnimate(it)
+            val prevHome = previewState.homeState
+            val prevLock = previewState.lockState
             previewState.homeState = (previewState.homeState + 1) % 3
             prefs.edit().putInt(WallpaperPrefs.KEY_HOME_STATE, previewState.homeState).apply()
             wallpaperUi.updateToggleButtons()
             scheduleUi.refreshAfterPrefsChanged()
-            if (previewState.homeState > 0) preview.applyCurrentVisibleToTarget(WallpaperManager.FLAG_SYSTEM)
+            val enteredDual =
+                WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState) &&
+                    !WallpaperTargetMode.isDualMode(prevHome, prevLock)
+            handleTargetModeChanged()
+            val dual = WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState)
+            if (previewState.homeState > 0 && !enteredDual && !dual) {
+                preview.applyCurrentVisibleToTarget(WallpaperManager.FLAG_SYSTEM)
+            }
         }
         binding.btnToggleLock.setOnClickListener {
             wallpaperUi.bounceAnimate(it)
+            val prevHome = previewState.homeState
+            val prevLock = previewState.lockState
             previewState.lockState = (previewState.lockState + 1) % 3
             prefs.edit().putInt(WallpaperPrefs.KEY_LOCK_STATE, previewState.lockState).apply()
             wallpaperUi.updateToggleButtons()
             scheduleUi.refreshAfterPrefsChanged()
-            if (previewState.lockState > 0) preview.applyCurrentVisibleToTarget(WallpaperManager.FLAG_LOCK)
+            val enteredDual =
+                WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState) &&
+                    !WallpaperTargetMode.isDualMode(prevHome, prevLock)
+            handleTargetModeChanged()
+            val dual = WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState)
+            if (previewState.lockState > 0 && !enteredDual && !dual) {
+                preview.applyCurrentVisibleToTarget(WallpaperManager.FLAG_LOCK)
+            }
         }
         binding.btnUndo.setOnClickListener {
             wallpaperUi.bounceAnimate(it)
@@ -307,7 +317,81 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun buildWallpaperWorkInput(isUrgent: Boolean, prefetchSlot: String): Data {
+    /** 粉蓝/蓝粉：仅补齐锁屏图；完成后同步到系统壁纸。 */
+    private fun ensureDualWallpaperIfNeeded() {
+        if (!WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState)) {
+            statusHint.clear()
+            return
+        }
+        WallpaperFiles.dropLockIfSameAsHome(this)
+        preview.loadPreview()
+
+        if (WallpaperFiles.isDualWallpaperComplete(this)) {
+            statusHint.clear()
+            syncStoredWallpapersToSystem()
+            return
+        }
+
+        if (refreshWork.isComplementWorkBusy()) {
+            statusHint.show(getString(R.string.status_dual_in_progress))
+            return
+        }
+        if (refreshWork.manualRefreshInProgress || refreshWork.isApplyWorkBusy()) {
+            return
+        }
+        if (WallpaperPrefs.isDualComplementCooldown(WallpaperPrefs.prefs(this))) {
+            statusHint.show(getString(R.string.status_dual_need_refresh))
+            return
+        }
+        if (!NetworkStatus.isConnected(this)) {
+            statusHint.show(getString(R.string.status_dual_need_refresh))
+            return
+        }
+        if (!WallpaperFiles.hasHomeWallpaper(this)) {
+            statusHint.show(getString(R.string.status_dual_need_refresh))
+            return
+        }
+
+        statusHint.show(getString(R.string.status_dual_fetching))
+        refreshWork.startLockComplementWork()
+    }
+
+    private fun syncStoredWallpapersToSystem() {
+        if (!WallpaperPrefs.needsSystemSync(this)) return
+        if (systemSyncJob?.isActive == true) return
+        systemSyncJob =
+            lifecycleScope.launch {
+                WallpaperWriteGuard.withWriteLock {
+                    val result =
+                        WallpaperApplier.applyFromStoredFiles(
+                            context = this@MainActivity,
+                            homeState = previewState.homeState,
+                            lockState = previewState.lockState,
+                        )
+                    WallpaperPrefs.markSystemSyncedIfComplete(
+                        this@MainActivity,
+                        previewState.homeState,
+                        previewState.lockState,
+                        result,
+                    )
+                }
+            }
+    }
+
+    private fun handleTargetModeChanged() {
+        WallpaperModeTransition.onTargetChanged(
+            this,
+            previewState.homeState,
+            previewState.lockState,
+        )
+        ensureDualWallpaperIfNeeded()
+    }
+
+    private fun buildWallpaperWorkInput(
+        isUrgent: Boolean,
+        prefetchSlot: String,
+        complementLockOnly: Boolean = false,
+    ): Data {
         val (strictTags, softTags) = currentTagArrays()
         val builder =
             Data.Builder()
@@ -318,6 +402,7 @@ class MainActivity : AppCompatActivity() {
                 .putInt("LOCK_STATE", previewState.lockState)
                 .putInt("R18_MODE", r18Mode)
                 .putBoolean("IS_URGENT", isUrgent)
+                .putBoolean("COMPLEMENT_LOCK_ONLY", complementLockOnly)
                 .putString("BUFFER_SLOT", prefetchSlot)
         if (!isUrgent) {
             builder.putString("PREFETCH_FINGERPRINT", currentPrefetchFingerprint())
@@ -337,16 +422,31 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (this::binding.isInitialized && this::workBindings.isInitialized) {
-            workObserver.syncOnResume(lifecycleScope)
-            prefetchCoordinator.migrateIfNeeded()
-            preview.loadPreview()
-            val prefs = WallpaperPrefs.prefs(this)
-            if (WallpaperPrefs.consumePendingAutoFailure(prefs)) {
-                Toast.makeText(this, getString(R.string.error_download_failed), Toast.LENGTH_LONG).show()
-            }
-            if (!WallpaperPrefs.isFirstLaunch(prefs)) {
-                prefetchCoordinator.maybeApplyToPreview()
-                prefetchCoordinator.refillEmptySlots()
+            lifecycleScope.launch {
+                workObserver.syncOnResume()
+                prefetchCoordinator.migrateIfNeeded()
+                preview.loadPreview()
+                ensureDualWallpaperIfNeeded()
+                val prefs = WallpaperPrefs.prefs(this@MainActivity)
+                if (WallpaperPrefs.consumePendingAutoFailure(prefs)) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(R.string.error_download_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                if (!WallpaperPrefs.isFirstLaunch(prefs)) {
+                    val applyBusy =
+                        refreshWork.isApplyWorkBusy() ||
+                            refreshWork.manualRefreshInProgress ||
+                            WallpaperWriteGuard.isWriteInProgress()
+                    if (!applyBusy) {
+                        prefetchCoordinator.maybeApplyToPreview()
+                    }
+                    if (!refreshWork.isApplyWorkBusy() && !WallpaperWriteGuard.isWriteInProgress()) {
+                        prefetchCoordinator.refillEmptySlots()
+                    }
+                }
             }
         }
     }

@@ -23,6 +23,11 @@ class WallpaperUrlPolicyTest {
     }
 
     @Test
+    fun isHostAllowed_pixivNl() {
+        assertTrue(WallpaperUrlPolicy.isHostAllowed("i.pixiv.nl"))
+    }
+
+    @Test
     fun isAllowed_requiresHttps() {
         assertFalse(WallpaperUrlPolicy.isAllowed("http://i.pixiv.re/img.jpg"))
     }

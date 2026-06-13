@@ -23,8 +23,8 @@
     <string name="mode_nsfw">NSFW 🔥</string>
     
     <!-- View Indicators -->
-    <string name="indicator_home">Home Screen</string>
-    <string name="indicator_lock">Lock Screen</string>
+    <string name="indicator_home">主屏预览</string>
+    <string name="indicator_lock">锁屏预览</string>
     
     <!-- Settings -->
     <string name="settings_title">Settings ⚙️</string>
@@ -47,7 +47,6 @@
     <string name="status_downloading">Downloading… (๑•̀ㅂ•́)و✧</string>
     <string name="status_success">All done! (ﾉ>ω&lt;)ﾉ</string>
     <string name="status_error">Oops! Something went wrong (╥﹏╥)</string>
-    <string name="status_instant_load">Instant Load! ⚡</string>
     <string name="status_refilling">Refilling… 📦</string>
     <string name="status_summoning">Summoning… ⌛</string>
     <string name="status_cooling_down">Please wait a moment… cooling down ☕</string>
@@ -63,6 +62,9 @@
     <string name="toast_auto_need_target">请先开启 Home 或 Lock 壁纸开关，自动更新才会生效。</string>
     <string name="toast_alarm_fallback">无法使用精确闹钟，已改为约每 24 小时自动刷新（非严格 7:00）。</string>
     <string name="toast_exact_alarm_request">请在系统设置中允许「闹钟与提醒」，以确保每日 7:00 准时换壁纸。</string>
+    <string name="status_dual_fetching">正在匹配锁屏专用壁纸…</string>
+    <string name="status_dual_in_progress">后台正在获取锁屏壁纸…</string>
+    <string name="status_dual_need_refresh">锁屏壁纸未就绪，请点 Refresh</string>
     <string name="toast_wallpaper_applied">New wallpaper applied! ✨</string>
     <string name="toast_download_failed">下载失败或系统拒绝设置壁纸。请检查网络、更换壁纸权限；华为等机型请关闭杂志锁屏。</string>
     <string name="toast_strict_mode">Strict Mode 🔒</string>
@@ -91,7 +93,7 @@
     
     <!-- Welcome Dialog -->
     <string name="welcome_title">Welcome to Nyanpasu! 🎉</string>
-    <string name="welcome_message">Thanks for installing!\n\n✨ Quick Guide:\n• Tap Home/Lock buttons to toggle (Off → Pink → Blue)\n• Pink = Sync mode (same wallpaper)\n• Blue = Independent mode (different wallpapers)\n• Slide the style bar to adjust taste\n• Add tags for custom preferences\n\nTip: Click the logo 10 times for a surprise~ (¬‿¬)</string>
+    <string name="welcome_message">Thanks for installing!\n\n✨ Quick Guide:\n• Tap Home/Lock buttons to toggle (Off → Pink → Blue)\n• Same color on both = one wallpaper for home &amp; lock\n• Different colors = separate home &amp; lock wallpapers\n• Tap the preview label to switch home/lock preview\n• Slide the style bar to adjust taste\n• Add tags for custom preferences\n\nTip: Click the logo 10 times for a surprise~ (¬‿¬)</string>
     <string name="welcome_btn_start">Let\'s Go! ✨</string>
 
     <!-- Developer Dialog -->

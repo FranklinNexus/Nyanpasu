@@ -8,6 +8,8 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.kuroshimira.nyanpasu.R
 import com.kuroshimira.nyanpasu.databinding.ActivityMainBinding
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 import com.kuroshimira.nyanpasu.work.PrefetchCoordinator
 import com.kuroshimira.nyanpasu.work.WallpaperJobOutcome
 import com.kuroshimira.nyanpasu.work.WallpaperWorkNames
@@ -21,8 +23,10 @@ internal class MainActivityWorkBindings(
     private val scope: CoroutineScope,
     private val previewState: PreviewController.State,
     private val preview: () -> PreviewController,
+    private val statusHint: () -> StatusHintController,
     private val scheduleReschedule: () -> Unit,
-    private val workInputBuilder: (isUrgent: Boolean, prefetchSlot: String) -> Data,
+    private val workInputBuilder: (isUrgent: Boolean, prefetchSlot: String, complementLockOnly: Boolean) -> Data,
+    private val syncStoredWallpapersToSystem: () -> Unit,
 ) {
     lateinit var refreshWork: RefreshWorkController
         private set
@@ -41,8 +45,11 @@ internal class MainActivityWorkBindings(
                     object : RefreshWorkController.Callbacks {
                         override fun isFinishing(): Boolean = activity.isFinishing
 
-                        override fun buildWorkInput(isUrgent: Boolean, prefetchSlot: String) =
-                            workInputBuilder(isUrgent, prefetchSlot)
+                        override fun buildWorkInput(
+                            isUrgent: Boolean,
+                            prefetchSlot: String,
+                            complementLockOnly: Boolean,
+                        ) = workInputBuilder(isUrgent, prefetchSlot, complementLockOnly)
 
                         override fun manualFailureMessage(outcome: WallpaperJobOutcome): String =
                             when {
@@ -61,6 +68,7 @@ internal class MainActivityWorkBindings(
                         override fun onManualUrgentSuccess() {
                             previewState.isPreviewingHome = true
                             preview().loadPreview()
+                            statusHint().clear()
                             Toast.makeText(
                                 activity,
                                 activity.getString(R.string.toast_wallpaper_applied),
@@ -75,6 +83,27 @@ internal class MainActivityWorkBindings(
                             if (outcome.applyResult.homeOk) {
                                 previewState.isPreviewingHome = true
                                 preview().loadPreview()
+                            }
+                        }
+
+                        override fun onBackgroundUrgentFinished(succeeded: Boolean) {
+                            if (succeeded) {
+                                previewState.isPreviewingHome = true
+                                preview().loadPreview()
+                                statusHint().clear()
+                                syncStoredWallpapersToSystem()
+                            }
+                        }
+
+                        override fun onLockComplementFinished(succeeded: Boolean) {
+                            preview().loadPreview()
+                            val prefs = WallpaperPrefs.prefs(activity)
+                            if (succeeded) {
+                                statusHint().clear()
+                                syncStoredWallpapersToSystem()
+                            } else {
+                                WallpaperPrefs.setDualComplementCooldown(prefs)
+                                statusHint().show(activity.getString(R.string.status_dual_need_refresh))
                             }
                         }
 
@@ -100,7 +129,10 @@ internal class MainActivityWorkBindings(
                             refreshWork.startOneTimeWork(isUrgent = false, prefetchSlot = slot)
 
                         override fun enqueueUrgentDownload() =
-                            refreshWork.startOneTimeWork(isUrgent = true)
+                            refreshWork.startOneTimeWork(isUrgent = true, userInitiated = false)
+
+                        override fun enqueueLockComplement() =
+                            refreshWork.startLockComplementWork()
 
                         override fun reloadPreview() {
                             previewState.isPreviewingHome = true
@@ -121,15 +153,26 @@ internal class MainActivityWorkBindings(
                     object : WallpaperWorkObserver.Callbacks {
                         override fun isFinishing(): Boolean = activity.isFinishing
                         override fun onPeriodicWorkSucceeded() = preview().loadPreview()
-                        override fun onPrefetchWorkSucceeded() = prefetchCoordinator.maybeApplyToPreview()
+                        override fun onPrefetchWorkSucceeded() {
+                            if (refreshWork.manualRefreshInProgress ||
+                                refreshWork.isApplyWorkBusy() ||
+                                refreshWork.isComplementWorkBusy() ||
+                                WallpaperWriteGuard.isWriteInProgress()
+                            ) {
+                                return
+                            }
+                            prefetchCoordinator.maybeApplyToPreview()
+                        }
                         override fun onApplyUrgentInfosUpdated(infos: List<WorkInfo>) {
                             refreshWork.updateBusyState()
-                            if (!WallpaperWorkNames.isApplyUrgentActive(infos)) {
-                                refreshWork.reconcileRefreshButton(infos)
-                            }
+                            refreshWork.reconcileRefreshButton(infos)
                         }
                         override fun onAutoApplyInfosUpdated(infos: List<WorkInfo>) {
                             refreshWork.updateBusyState()
+                        }
+                        override fun onComplementInfosUpdated(infos: List<WorkInfo>) {
+                            refreshWork.updateBusyState()
+                            refreshWork.reconcileComplementWork(infos)
                         }
                         override fun onPeriodicInfosUpdated(infos: List<WorkInfo>) {
                             refreshWork.updateBusyState()
@@ -138,6 +181,8 @@ internal class MainActivityWorkBindings(
                             refreshWork.handleApplyUrgentFinished(succeeded, info)
                         override fun onAutoApplyFinished(succeeded: Boolean, info: WorkInfo) =
                             refreshWork.handleAutoApplyFinished(succeeded, info)
+                        override fun onComplementFinished(succeeded: Boolean, info: WorkInfo) =
+                            refreshWork.handleComplementFinished(succeeded, info)
                     },
             )
         workObserver.register()

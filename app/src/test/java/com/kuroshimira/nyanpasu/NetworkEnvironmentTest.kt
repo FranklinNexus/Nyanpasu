@@ -15,9 +15,14 @@ class NetworkEnvironmentTest {
     }
 
     @Test
-    fun vpn_prefersLoliconFirst() {
+    fun vpn_prefersDomesticMirrorFirst() {
         val order = NetworkEnvironment.loliconMirrorOrder(NetworkRoute.VPN)
-        assertTrue(order.first().contains("lolicon"))
+        assertTrue(order.first().contains("yetal"))
+    }
+
+    @Test
+    fun vpn_prefersPixivMirror() {
+        assertTrue(NetworkEnvironment.preferPixivMirrorFirst(NetworkRoute.VPN))
     }
 
     @Test

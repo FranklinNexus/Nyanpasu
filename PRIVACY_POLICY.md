@@ -1,6 +1,6 @@
 # Privacy Policy for Nyanpasu Wallpaper
 
-**Last Updated**: January 22, 2026
+**Last Updated**: June 13, 2026
 
 ## Overview
 

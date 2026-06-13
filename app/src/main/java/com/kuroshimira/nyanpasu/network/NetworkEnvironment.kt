@@ -34,20 +34,20 @@ object NetworkEnvironment {
         return NetworkRoute.RESTRICTED
     }
 
-    /** Lolicon API 镜像尝试顺序。 */
+    /** Lolicon API 镜像尝试顺序。VPN 下仍优先 yetal（大陆常见：梯子不接管 App 流量）。 */
     fun loliconMirrorOrder(route: NetworkRoute): List<String> =
         when (route) {
-            NetworkRoute.RESTRICTED ->
+            NetworkRoute.RESTRICTED, NetworkRoute.VPN ->
                 listOf(YETAL, LOLICON)
-            NetworkRoute.VPN, NetworkRoute.NORMAL ->
+            NetworkRoute.NORMAL ->
                 listOf(LOLICON, YETAL)
             NetworkRoute.OFFLINE ->
-                listOf(LOLICON, YETAL)
+                listOf(YETAL, LOLICON)
         }
 
-    /** 大陆/弱验证网络优先走 pixiv.cat 等镜像，减少 Ajax 超时。 */
+    /** 大陆/弱验证/VPN 网络优先走 pixiv 反代，避免 Ajax 返回 pximg 直连链。 */
     fun preferPixivMirrorFirst(route: NetworkRoute): Boolean =
-        route == NetworkRoute.RESTRICTED
+        route == NetworkRoute.RESTRICTED || route == NetworkRoute.VPN
 
     fun logLabel(route: NetworkRoute): String = route.name.lowercase()
 }

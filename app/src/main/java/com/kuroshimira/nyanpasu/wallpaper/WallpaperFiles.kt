@@ -24,6 +24,21 @@ object WallpaperFiles {
         return f.exists() && f.length() > 0L
     }
 
+    /** 异色双图：主/锁文件均存在且内容不同。非双图模式恒为 true。 */
+    fun isDualWallpaperComplete(context: Context): Boolean {
+        val prefs = WallpaperPrefs.prefs(context)
+        val (homeState, lockState) = WallpaperPrefs.readHomeLockState(prefs)
+        if (!WallpaperTargetMode.isDualMode(homeState, lockState)) return true
+        val home = homeFile(context)
+        val lock = lockFile(context)
+        if (homeState > 0 && (!home.exists() || home.length() == 0L)) return false
+        if (lockState > 0 && (!lock.exists() || lock.length() == 0L)) return false
+        if (homeState > 0 && lockState > 0) {
+            return !filesContentEqual(home, lock)
+        }
+        return true
+    }
+
     fun firstReadyPrefetch(context: Context, expectedFingerprint: String? = null): File? {
         migrateLegacyBuffer(context)
         val prefs = WallpaperPrefs.prefs(context)
@@ -84,6 +99,36 @@ object WallpaperFiles {
         bufferFile(context, "a").delete()
         bufferFile(context, "b").delete()
         File(context.filesDir, LEGACY_BUFFER).delete()
+    }
+
+    /** 双图模式下若 lock 与 home 文件相同，删除 lock，避免预览/系统仍显示联动旧图。 */
+    fun dropLockIfSameAsHome(context: Context): Boolean {
+        val home = homeFile(context)
+        val lock = lockFile(context)
+        if (!home.exists() || home.length() == 0L || !lock.exists() || lock.length() == 0L) {
+            return false
+        }
+        if (!filesContentEqual(home, lock)) return false
+        return lock.delete()
+    }
+
+    fun filesContentEqual(a: File, b: File): Boolean {
+        if (a.length() != b.length()) return false
+        a.inputStream().use { inputA ->
+            b.inputStream().use { inputB ->
+                val bufA = ByteArray(8192)
+                val bufB = ByteArray(8192)
+                while (true) {
+                    val readA = inputA.read(bufA)
+                    val readB = inputB.read(bufB)
+                    if (readA != readB) return false
+                    if (readA <= 0) return true
+                    for (i in 0 until readA) {
+                        if (bufA[i] != bufB[i]) return false
+                    }
+                }
+            }
+        }
     }
 
     fun saveBitmapSafely(context: Context, bitmap: Bitmap, filename: String) {

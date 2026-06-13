@@ -1,4 +1,4 @@
-﻿package com.kuroshimira.nyanpasu.work
+package com.kuroshimira.nyanpasu.work
 
 import android.content.Context
 import androidx.work.WorkInfo
@@ -10,12 +10,16 @@ object WallpaperWorkNames {
     /** 手动 Refresh 专用队列；闹钟自动换壁纸用 [APPLY_AUTO]，避免与 REPLACE 互斥。 */
     const val APPLY_URGENT = "wallpaper_apply_urgent"
 
+    /** 粉蓝/蓝粉：主屏已有图，仅补齐锁屏图（不与手动 Refresh 抢队列）。 */
+    const val APPLY_DUAL_COMPLEMENT = "wallpaper_apply_dual_complement"
+
     /** Daily 闹钟触发的一次性自动 apply。 */
     const val APPLY_AUTO = "wallpaper_apply_auto"
 
     const val AUTO_PERIODIC = "AUTO_JOB"
 
     const val TAG_MANUAL_REFRESH = "MANUAL_REFRESH"
+    const val TAG_DUAL_COMPLEMENT = "DUAL_COMPLEMENT"
     /** 闹钟 / 一次性自动换壁纸任务 */
     const val TAG_AUTO_WALLPAPER = "AUTO_WALLPAPER"
     /** WorkManager 周期自动换壁纸（勿与手动 Refresh 共用 cancelByTag） */
