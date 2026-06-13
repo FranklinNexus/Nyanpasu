@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="120" alt="Nyanpasu" />
+  <img src="app/src/main/ic_launcher-playstore.png" width="120" alt="Nyanpasu" />
 
   <h1>Nyanpasu Wallpaper</h1>
 
@@ -10,7 +10,7 @@
     The ACG wallpaper app that actually gets dual-screen right.
   </p>
 
-  <p><i>每天自动换一张心动壁纸 · 主屏锁屏各玩各的 · 免费无广告</i></p>
+  <p><i>每日自动换壁纸 · 主屏与锁屏可独立设置 · 永久免费无广告</i></p>
 
   <br/>
 
@@ -51,11 +51,11 @@
 
 ## ✨ Why Nyanpasu?
 
-Tired of the same boring wallpaper? Nyanpasu finds stunning ACG art for you — applies it in one tap — and keeps your **Home** and **Lock** screens as independent as your taste.
+Tired of the same boring wallpaper? Nyanpasu finds stunning ACG art for you — applies it in one tap — and lets you set **Home** and **Lock** screens **together or separately**.
 
-* 🌸 **Dual-Stream Engine** — Waifu on Home, scenery on Lock? **Pink = Sync**, **Blue = Independent**. Three taps, infinite combos.
+* 🌸 **Dual-Stream Engine** — Same wallpaper on both screens, or a different one for each. **Pink = Sync**, **Blue = Independent**.
 * 🤖 **Soul Link Mascot** — Not a cold utility. She greets you, reacts to your tags, and drops 200+ anime one-liners. (Tap the logo 10× for a surprise 🎉)
-* 🖼️ **WYSIWYG Editor** — Pinch, pan, crop. **What you frame in the preview is exactly what lands on your phone.** No more "why does it look cropped?"
+* 🖼️ **WYSIWYG Editor** — Pinch, pan, crop. **What you frame in the preview is exactly what lands on your phone.**
 * 🔍 **Smart Tags** — **`Strict 🔒`** = your oshi, every time. **`Soft 🎲`** = pleasant surprises. Genshin, BA, Azur Lane, Fate, Touhou — she knows the references.
 * ⚡ **Zero Latency** — Dual-buffer prefetch means **Instant Load** on most refreshes. Tap Refresh — wallpaper's already there.
 * ⏰ **Set & Forget** — Auto-update at **7:00 AM daily**, or every **6 / 12 / 24 hours**. Wake up to something new.
@@ -80,18 +80,6 @@ Tired of the same boring wallpaper? Nyanpasu finds stunning ACG art for you — 
 
 > **Tip:** On Huawei / Honor, disable *Magazine Lockscreen* for best results.  
 > **Requires:** Android 7.0 (API 24)+
-
-<br/>
-
-## ⭐ Love your lock screen?
-
-If Nyanpasu made your phone a little more *you* — a GitHub **Star** means the world to an indie dev.
-
-<div align="center">
-
-[![Star on GitHub](https://img.shields.io/github/stars/FranklinNexus/Nyanpasu?style=social&label=Star)](https://github.com/FranklinNexus/Nyanpasu)
-
-</div>
 
 <br/>
 
