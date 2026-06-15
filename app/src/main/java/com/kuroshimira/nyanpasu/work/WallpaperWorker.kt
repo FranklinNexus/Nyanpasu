@@ -5,6 +5,7 @@ import com.kuroshimira.nyanpasu.network.NetworkImageLoader
 import com.kuroshimira.nyanpasu.network.NetworkStatus
 import com.kuroshimira.nyanpasu.network.WallpaperUrlPolicy
 import com.kuroshimira.nyanpasu.schedule.AutoUpdateNotifier
+import com.kuroshimira.nyanpasu.schedule.AutoWallpaperScheduler
 import com.kuroshimira.nyanpasu.wallpaper.ImageProcessor
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
@@ -146,6 +147,7 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
             val output = outcome.toWorkData()
             if (isAuto) {
                 AutoUpdateNotifier.showJobResult(applicationContext, outcome)
+                AutoWallpaperScheduler.onAutoWorkCompleted(applicationContext, tags)
             }
             if (outcome.ok) Result.success(output) else Result.failure(output)
         } catch (e: CancellationException) {
@@ -153,7 +155,10 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Worker failed", e)
-            if (isAuto) AutoUpdateNotifier.showFailure(applicationContext)
+            if (isAuto) {
+                AutoUpdateNotifier.showFailure(applicationContext)
+                AutoWallpaperScheduler.onAutoWorkCompleted(applicationContext, tags)
+            }
             Result.failure(WallpaperJobOutcome.downloadFailed().toWorkData())
         }
     }
@@ -190,20 +195,6 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
         )
     }
 
-    private fun isAutoApplyActive(): Boolean {
-        val infos = WorkManager.getInstance(applicationContext)
-            .getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_AUTO)
-            .get()
-        return WallpaperWorkNames.isApplyUrgentActive(infos)
-    }
-
-    private fun isPeriodicApplyRunning(): Boolean {
-        val infos = WorkManager.getInstance(applicationContext)
-            .getWorkInfosForUniqueWork(WallpaperWorkNames.AUTO_PERIODIC)
-            .get()
-        return WallpaperWorkNames.isPeriodicApplyRunning(infos, excludeId = id)
-    }
-
     /** 预取任务入队后偏好变更时，跳过写入避免覆盖新槽位。 */
     private fun isPrefetchSnapshotStale(prefs: android.content.SharedPreferences): Boolean {
         val expected = inputData.getString("PREFETCH_FINGERPRINT") ?: return false
@@ -211,14 +202,38 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
         return expected != WallpaperPrefs.prefetchSnapshotFingerprint(prefs)
     }
 
+    private fun isPeriodicAutoRun(): Boolean =
+        tags.contains(WallpaperWorkNames.TAG_AUTO_PERIODIC)
+
+    private fun isDailyChainAutoRun(): Boolean =
+        tags.contains(WallpaperWorkNames.TAG_DAILY_CHAIN)
+
+    private suspend fun workInfosFor(uniqueName: String): List<WorkInfo> =
+        withContext(Dispatchers.IO) {
+            WorkManager.getInstance(applicationContext)
+                .getWorkInfosForUniqueWork(uniqueName)
+                .get()
+        }
+
+    private suspend fun isAutoApplyActive(): Boolean {
+        val infos = workInfosFor(WallpaperWorkNames.APPLY_AUTO)
+        return WallpaperWorkNames.isApplyUrgentActive(infos)
+    }
+
+    private suspend fun isPeriodicApplyRunning(): Boolean {
+        if (isPeriodicAutoRun()) return false
+        val infos = workInfosFor(WallpaperWorkNames.AUTO_PERIODIC)
+        return WallpaperWorkNames.isPeriodicApplyRunning(infos, excludeId = id)
+    }
+
     /** 自动 / 周期 apply 让位给进行中的写入、手动 urgent 或其它自动任务。 */
-    private fun shouldDeferAutoApply(): Boolean {
+    private suspend fun shouldDeferAutoApply(): Boolean {
         if (WallpaperWriteGuard.isWriteInProgress()) return true
         if (isPeriodicApplyRunning()) return true
-        val wm = WorkManager.getInstance(applicationContext)
-        val urgentInfos = wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_URGENT).get()
+        val urgentInfos = workInfosFor(WallpaperWorkNames.APPLY_URGENT)
         if (WallpaperWorkNames.isManualApplyActive(urgentInfos)) return true
-        val autoInfos = wm.getWorkInfosForUniqueWork(WallpaperWorkNames.APPLY_AUTO).get()
+        if (isDailyChainAutoRun()) return false
+        val autoInfos = workInfosFor(WallpaperWorkNames.APPLY_AUTO)
         return autoInfos.any {
             (it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED) &&
                 it.id != id

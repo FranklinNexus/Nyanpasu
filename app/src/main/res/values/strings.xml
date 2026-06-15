@@ -60,7 +60,7 @@
     
     <!-- Toasts &amp; dialogs -->
     <string name="toast_auto_need_target">请先开启 Home 或 Lock 壁纸开关，自动更新才会生效。</string>
-    <string name="toast_alarm_fallback">无法使用精确闹钟，已改为约每 24 小时自动刷新（非严格 7:00）。</string>
+    <string name="toast_alarm_fallback">无法使用精确闹钟，已改为每日 7:00 左右通过后台任务自动换壁纸。</string>
     <string name="toast_exact_alarm_request">请在系统设置中允许「闹钟与提醒」，以确保每日 7:00 准时换壁纸。</string>
     <string name="status_dual_fetching">正在匹配锁屏专用壁纸…</string>
     <string name="status_dual_in_progress">后台正在获取锁屏壁纸…</string>

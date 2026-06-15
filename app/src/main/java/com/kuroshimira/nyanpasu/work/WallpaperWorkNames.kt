@@ -18,12 +18,17 @@ object WallpaperWorkNames {
 
     const val AUTO_PERIODIC = "AUTO_JOB"
 
+    /** Daily 7:00 无精确闹钟时的 OneTime 链。 */
+    const val AUTO_DAILY_CHAIN = "AUTO_DAILY_CHAIN"
+
     const val TAG_MANUAL_REFRESH = "MANUAL_REFRESH"
     const val TAG_DUAL_COMPLEMENT = "DUAL_COMPLEMENT"
     /** 闹钟 / 一次性自动换壁纸任务 */
     const val TAG_AUTO_WALLPAPER = "AUTO_WALLPAPER"
     /** WorkManager 周期自动换壁纸（勿与手动 Refresh 共用 cancelByTag） */
     const val TAG_AUTO_PERIODIC = "AUTO_WALLPAPER_PERIODIC"
+    /** Daily 7:00 WorkManager 链（无精确闹钟） */
+    const val TAG_DAILY_CHAIN = "AUTO_WALLPAPER_DAILY_CHAIN"
 
     /** 迁移前任务名，冷启动时取消以免孤儿任务写盘。 */
     const val LEGACY_MANUAL = "urgent_wallpaper"

@@ -64,7 +64,7 @@ class ScheduleUiController(
     }
 
     fun reportResult(result: ScheduleResult) {
-        if (result == ScheduleResult.DAILY_FALLBACK_PERIODIC) {
+        if (result == ScheduleResult.DAILY_FALLBACK_CHAIN) {
             Toast.makeText(
                 activity,
                 activity.getString(R.string.toast_alarm_fallback),
@@ -91,5 +91,15 @@ class ScheduleUiController(
         } else {
             reportResult(AutoWallpaperScheduler.schedule(activity))
         }
+    }
+
+    /** 从设置页返回：只升级 Daily 精确闹钟，不重置已排期的周期/链。 */
+    fun reconcileOnResume() {
+        if (!binding.switchDaily.isChecked) return
+        if (callbacks.homeState() == 0 && callbacks.lockState() == 0) {
+            rescheduleIfEnabled()
+            return
+        }
+        AutoWallpaperScheduler.reconcileOnResume(activity)?.let { reportResult(it) }
     }
 }

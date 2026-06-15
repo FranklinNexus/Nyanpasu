@@ -422,6 +422,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (this::binding.isInitialized && this::workBindings.isInitialized) {
+            if (this::scheduleUi.isInitialized && binding.switchDaily.isChecked) {
+                scheduleUi.reconcileOnResume()
+            }
             lifecycleScope.launch {
                 workObserver.syncOnResume()
                 prefetchCoordinator.migrateIfNeeded()

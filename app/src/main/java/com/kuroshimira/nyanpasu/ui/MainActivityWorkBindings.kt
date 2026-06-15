@@ -74,9 +74,6 @@ internal class MainActivityWorkBindings(
                                 activity.getString(R.string.toast_wallpaper_applied),
                                 Toast.LENGTH_SHORT,
                             ).show()
-                            if (binding.switchDaily.isChecked) {
-                                scheduleReschedule()
-                            }
                         }
 
                         override fun onManualUrgentFailure(outcome: WallpaperJobOutcome) {

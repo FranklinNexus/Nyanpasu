@@ -22,22 +22,25 @@ import com.kuroshimira.nyanpasu.work.WallpaperWorkNames
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
-/** 调度结果，供 UI 提示用户（如 Daily 回退到 24h WorkManager）。 */
+/** 调度结果，供 UI 提示用户（如 Daily 无精确闹钟权限时走 WorkManager 7:00 链）。 */
 enum class ScheduleResult {
     DAILY_ALARM,
     PERIODIC,
-    DAILY_FALLBACK_PERIODIC,
+    DAILY_FALLBACK_CHAIN,
 }
 
 /**
- * 自动换壁纸调度：Daily 7:00 用 [AlarmManager.setAlarmClock] 精确触发；
- * 6/12/24 小时间隔用 WorkManager 周期任务。Worker 在 IS_AUTO 时从 SharedPreferences 读最新配置。
+ * 自动换壁纸调度：Daily 7:00 优先 [AlarmManager.setAlarmClock]；
+ * 无精确闹钟权限时用 OneTimeWork 链在 7:00 触发；6/12/24h 用 PeriodicWork。
+ * Worker 在 IS_AUTO 时从 SharedPreferences 读最新配置。
  */
 object AutoWallpaperScheduler {
 
     private const val TAG = "AutoWallpaperScheduler"
 
     const val WORK_PERIODIC = WallpaperWorkNames.AUTO_PERIODIC
+    /** Daily 7:00 无精确闹钟时的 OneTime 链（每次执行后预约次日 7:00）。 */
+    const val WORK_DAILY_CHAIN = WallpaperWorkNames.AUTO_DAILY_CHAIN
     const val ACTION_ALARM = "com.kuroshimira.nyanpasu.ACTION_AUTO_WALLPAPER_ALARM"
     private const val ALARM_REQUEST_CODE = 1001
     private const val SHOW_INTENT_REQUEST_CODE = 1002
@@ -75,11 +78,12 @@ object AutoWallpaperScheduler {
         val scheduleIndex = WallpaperPrefs.readScheduleIndex(prefs)
         return if (scheduleIndex == 0) {
             if (scheduleDailyAlarm(context)) {
+                cancelDailyWorkChain(context)
                 ScheduleResult.DAILY_ALARM
             } else {
-                Log.w(TAG, "Exact alarm unavailable; falling back to 24h WorkManager for daily mode")
-                schedulePeriodicWork(context, 3)
-                ScheduleResult.DAILY_FALLBACK_PERIODIC
+                Log.w(TAG, "Exact alarm unavailable; using WorkManager daily 7:00 chain")
+                scheduleDailyWorkChain(context)
+                ScheduleResult.DAILY_FALLBACK_CHAIN
             }
         } else {
             schedulePeriodicWork(context, scheduleIndex)
@@ -90,6 +94,7 @@ object AutoWallpaperScheduler {
     /** 仅取消闹钟与周期任务，不打断进行中的手动 Refresh。 */
     fun cancelScheduling(context: Context) {
         cancelDailyAlarm(context)
+        cancelDailyWorkChain(context)
         WorkManager.getInstance(context).cancelUniqueWork(WORK_PERIODIC)
         WallpaperWorkNames.cancelLegacyApplyWorks(context)
     }
@@ -109,7 +114,51 @@ object AutoWallpaperScheduler {
         }
         enqueueAutoWallpaperWork(context)
         if (WallpaperPrefs.readScheduleIndex(prefs) == 0) {
-            scheduleDailyAlarm(context)
+            if (!scheduleDailyAlarm(context)) {
+                scheduleDailyWorkChain(context)
+            }
+        }
+    }
+
+    /**
+     * 自动任务结束：Daily 链无论成败都预约次日 7:00；闹钟触发的 APPLY_AUTO 由 [onDailyAlarmFired] 预约。
+     */
+    fun onAutoWorkCompleted(context: Context, workerTags: Set<String>) {
+        val prefs = WallpaperPrefs.prefs(context)
+        if (!WallpaperPrefs.isAutoUpdateEnabled(prefs)) return
+        if (WallpaperPrefs.readScheduleIndex(prefs) != 0) return
+        if (workerTags.contains(WallpaperWorkNames.TAG_AUTO_WALLPAPER)) return
+
+        if (workerTags.contains(WallpaperWorkNames.TAG_DAILY_CHAIN)) {
+            rescheduleDailyTick(context)
+        }
+    }
+
+    /**
+     * 从设置返回时轻量 reconcile：仅尝试 Daily 链 → 精确闹钟升级，不重置周期/链计时。
+     */
+    fun reconcileOnResume(context: Context): ScheduleResult? {
+        val prefs = WallpaperPrefs.prefs(context)
+        if (!WallpaperPrefs.isAutoUpdateEnabled(prefs) || !WallpaperPrefs.canApplyWallpaper(prefs)) {
+            return null
+        }
+        if (WallpaperPrefs.readScheduleIndex(prefs) != 0) return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (!alarmManager.canScheduleExactAlarms()) return null
+        return if (scheduleDailyAlarm(context)) {
+            cancelDailyWorkChain(context)
+            ScheduleResult.DAILY_ALARM
+        } else {
+            null
+        }
+    }
+
+    private fun rescheduleDailyTick(context: Context) {
+        if (scheduleDailyAlarm(context)) {
+            cancelDailyWorkChain(context)
+        } else {
+            scheduleDailyWorkChain(context)
         }
     }
 
@@ -133,6 +182,35 @@ object AutoWallpaperScheduler {
             ExistingWorkPolicy.REPLACE,
             request,
         )
+    }
+
+    private fun scheduleDailyWorkChain(context: Context) {
+        val delayMs = millisUntilNextClock(DAILY_HOUR, DAILY_MINUTE)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<WallpaperWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+            .setInputData(
+                workDataOf(
+                    "IS_URGENT" to true,
+                    "IS_AUTO" to true,
+                ),
+            )
+            .addTag(WallpaperWorkNames.TAG_DAILY_CHAIN)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            WORK_DAILY_CHAIN,
+            ExistingWorkPolicy.REPLACE,
+            request,
+        )
+        Log.d(TAG, "Daily WorkManager chain scheduled in ${delayMs / 1000}s")
+    }
+
+    private fun cancelDailyWorkChain(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(WORK_DAILY_CHAIN)
     }
 
     private fun scheduleDailyAlarm(context: Context): Boolean {
