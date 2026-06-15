@@ -89,7 +89,13 @@ jobs:
       id: release_notes
       run: |
         VERSION=${GITHUB_REF#refs/tags/v}
-        awk "/^## \\[$VERSION\\]/,/^## \\[[0-9]/" CHANGELOG.md | sed '1d;$d' > release_notes.txt
+        awk -v ver="$VERSION" '
+          /^## \[/ {
+            if ($0 ~ "^## \\[" ver "\\]") { emit = 1; next }
+            if (emit) exit
+          }
+          emit { print }
+        ' CHANGELOG.md > release_notes.txt
         if [ ! -s release_notes.txt ]; then
           echo "::error::No CHANGELOG section for version $VERSION"
           exit 1
