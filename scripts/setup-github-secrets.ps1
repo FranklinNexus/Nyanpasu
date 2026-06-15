@@ -49,8 +49,14 @@ if (-not (Test-Path $jks)) {
 Write-Host ">> 使用 keystore: $jks" -ForegroundColor Cyan
 
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($jks))
+$b64File = Join-Path $env:TEMP "nyanpasu-keystore.b64"
+try {
+    [System.IO.File]::WriteAllText($b64File, $b64, [System.Text.UTF8Encoding]::new($false))
+    & $gh secret set KEYSTORE_BASE64 --repo $Repo --body-file $b64File
+} finally {
+    if (Test-Path $b64File) { Remove-Item $b64File -Force }
+}
 
-& $gh secret set KEYSTORE_BASE64 --repo $Repo --body $b64
 & $gh secret set KEYSTORE_PASSWORD --repo $Repo --body $props["storePassword"]
 & $gh secret set KEY_ALIAS --repo $Repo --body $props["keyAlias"]
 & $gh secret set KEY_PASSWORD --repo $Repo --body $props["keyPassword"]

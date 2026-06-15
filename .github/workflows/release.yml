@@ -37,7 +37,7 @@ jobs:
     - name: 🔐 Configure release signing
       if: env.KEYSTORE_BASE64 != ''
       run: |
-        echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+        printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
         printf '%s\n' \
           "storeFile=release.jks" \
           "storePassword=$KEYSTORE_PASSWORD" \
@@ -45,6 +45,8 @@ jobs:
           "keyPassword=$KEY_PASSWORD" \
           > keystore.properties
         ls -la release.jks keystore.properties
+        keytool -list -keystore release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+        echo "Keystore OK: alias=$KEY_ALIAS size=$(wc -c < release.jks)"
 
     - name: ⚠️ Require signing secrets
       if: env.KEYSTORE_BASE64 == ''
@@ -56,19 +58,20 @@ jobs:
       run: ./gradlew testReleaseUnitTest
 
     - name: 🔨 Build Release APK
-      run: ./gradlew assembleRelease
+      run: ./gradlew assembleRelease --rerun-tasks
 
     - name: ✅ Verify signed APK
       run: |
         ls -la .out/app/outputs/apk/release/
-        APK=$(ls .out/app/outputs/apk/release/*-release.apk 2>/dev/null | head -n 1)
+        APK=$(ls .out/app/outputs/apk/release/app-release.apk 2>/dev/null || true)
         if [ -z "$APK" ]; then
-          APK=$(ls .out/app/outputs/apk/release/*.apk | grep -v unsigned | head -n 1)
+          APK=$(ls .out/app/outputs/apk/release/*.apk 2>/dev/null | grep -v unsigned | head -n 1)
         fi
         if [ -z "$APK" ] || echo "$APK" | grep -q unsigned; then
           echo "::error::Release APK is unsigned. Check KEYSTORE_* secrets and keystore.properties."
           exit 1
         fi
+        jarsigner -verify -verbose "$APK" | head -n 5
         echo "Built: $APK"
         cp "$APK" .out/app/outputs/apk/release/app-release.apk
 
