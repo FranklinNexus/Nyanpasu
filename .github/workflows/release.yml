@@ -74,17 +74,16 @@ jobs:
     - name: ✅ Verify signed APK
       run: |
         ls -la .out/app/outputs/apk/release/
-        APK=$(ls .out/app/outputs/apk/release/app-release.apk 2>/dev/null || true)
-        if [ -z "$APK" ]; then
+        APK=".out/app/outputs/apk/release/app-release.apk"
+        if [ ! -f "$APK" ]; then
           APK=$(ls .out/app/outputs/apk/release/*.apk 2>/dev/null | grep -v unsigned | head -n 1)
         fi
-        if [ -z "$APK" ] || echo "$APK" | grep -q unsigned; then
-          echo "::error::Release APK is unsigned. Check KEYSTORE_* secrets and keystore.properties."
+        if [ -z "$APK" ] || [ ! -f "$APK" ] || echo "$APK" | grep -q unsigned; then
+          echo "::error::Release APK is unsigned or missing."
           exit 1
         fi
         jarsigner -verify -verbose "$APK" | head -n 5
         echo "Built: $APK"
-        cp "$APK" .out/app/outputs/apk/release/app-release.apk
 
     - name: 📝 Extract Release Notes
       id: release_notes
