@@ -38,12 +38,13 @@ jobs:
       if: env.KEYSTORE_BASE64 != ''
       run: |
         echo "$KEYSTORE_BASE64" | base64 -d > release.jks
-        cat > keystore.properties <<EOF
-        storeFile=release.jks
-        storePassword=$KEYSTORE_PASSWORD
-        keyAlias=$KEY_ALIAS
-        keyPassword=$KEY_PASSWORD
-        EOF
+        printf '%s\n' \
+          "storeFile=release.jks" \
+          "storePassword=$KEYSTORE_PASSWORD" \
+          "keyAlias=$KEY_ALIAS" \
+          "keyPassword=$KEY_PASSWORD" \
+          > keystore.properties
+        ls -la release.jks keystore.properties
 
     - name: ⚠️ Require signing secrets
       if: env.KEYSTORE_BASE64 == ''
@@ -59,12 +60,16 @@ jobs:
 
     - name: ✅ Verify signed APK
       run: |
-        APK=$(ls .out/app/outputs/apk/release/*.apk | head -n 1)
-        echo "Built: $APK"
-        if echo "$APK" | grep -q unsigned; then
-          echo "::error::Release APK is unsigned. Add GitHub secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD"
+        ls -la .out/app/outputs/apk/release/
+        APK=$(ls .out/app/outputs/apk/release/*-release.apk 2>/dev/null | head -n 1)
+        if [ -z "$APK" ]; then
+          APK=$(ls .out/app/outputs/apk/release/*.apk | grep -v unsigned | head -n 1)
+        fi
+        if [ -z "$APK" ] || echo "$APK" | grep -q unsigned; then
+          echo "::error::Release APK is unsigned. Check KEYSTORE_* secrets and keystore.properties."
           exit 1
         fi
+        echo "Built: $APK"
         cp "$APK" .out/app/outputs/apk/release/app-release.apk
 
     - name: 📝 Extract Release Notes
