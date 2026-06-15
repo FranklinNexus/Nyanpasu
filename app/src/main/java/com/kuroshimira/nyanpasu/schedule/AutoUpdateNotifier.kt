@@ -8,6 +8,7 @@ import com.kuroshimira.nyanpasu.work.WallpaperJobOutcome
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -44,7 +45,7 @@ object AutoUpdateNotifier {
             .setContentIntent(openAppPendingIntent(context))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        postNotification(context, notification)
     }
 
     fun showJobResult(context: Context, outcome: WallpaperJobOutcome) {
@@ -72,7 +73,7 @@ object AutoUpdateNotifier {
             .setContentIntent(openAppPendingIntent(context))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        postNotification(context, notification)
     }
 
     fun showFailure(context: Context) {
@@ -86,7 +87,7 @@ object AutoUpdateNotifier {
             .setContentIntent(openAppPendingIntent(context))
             .setAutoCancel(true)
             .build()
-        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        postNotification(context, notification)
     }
 
     /** 无通知权限时写入 prefs，下次打开 App 再 Toast。 */
@@ -103,6 +104,16 @@ object AutoUpdateNotifier {
             ) == PackageManager.PERMISSION_GRANTED
         }
         return true
+    }
+
+    /** 调用方须先通过 [canNotify]；Lint 无法跨函数推断权限已授予。 */
+    @SuppressLint("MissingPermission")
+    private fun postNotification(context: Context, notification: android.app.Notification) {
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
+            recordFailure(context)
+        }
     }
 
     private fun openAppPendingIntent(context: Context): PendingIntent {
