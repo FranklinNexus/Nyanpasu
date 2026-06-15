@@ -49,7 +49,7 @@ if (-not (Test-Path $jks)) {
 Write-Host ">> 使用 keystore: $jks" -ForegroundColor Cyan
 
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($jks))
-$b64 | & $gh secret set KEYSTORE_BASE64 --repo $Repo
+& $gh secret set KEYSTORE_BASE64 --repo $Repo -b $b64
 
 & $gh secret set KEYSTORE_PASSWORD --repo $Repo --body $props["storePassword"]
 & $gh secret set KEY_ALIAS --repo $Repo --body $props["keyAlias"]
