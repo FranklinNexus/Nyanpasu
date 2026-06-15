@@ -259,6 +259,9 @@ object WallpaperJobRunner {
         if (!WallpaperTargetMode.isDualMode(homeState, lockState)) {
             return@withContext WallpaperJobOutcome(ok = true)
         }
+        if (WallpaperFiles.isDualWallpaperComplete(context)) {
+            return@withContext WallpaperJobOutcome(ok = true)
+        }
         if (!WallpaperFiles.hasHomeWallpaper(context)) {
             return@withContext WallpaperJobOutcome.searchFailed()
         }

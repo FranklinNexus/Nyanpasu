@@ -7,6 +7,7 @@ import com.kuroshimira.nyanpasu.network.WallpaperUrlPolicy
 import com.kuroshimira.nyanpasu.schedule.AutoUpdateNotifier
 import com.kuroshimira.nyanpasu.schedule.AutoWallpaperScheduler
 import com.kuroshimira.nyanpasu.wallpaper.ImageProcessor
+import com.kuroshimira.nyanpasu.wallpaper.WallpaperFiles
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperPrefs
 import com.kuroshimira.nyanpasu.wallpaper.WallpaperWriteGuard
 
@@ -72,6 +73,10 @@ class WallpaperWorker(appContext: Context, workerParams: WorkerParameters) :
 
         val complementLock = inputData.getBoolean("COMPLEMENT_LOCK_ONLY", false)
         if (complementLock) {
+            if (WallpaperFiles.isDualWallpaperComplete(applicationContext)) {
+                Log.d(TAG, "Complement skipped: dual wallpaper already complete")
+                return Result.success()
+            }
             if (!NetworkStatus.shouldAttemptNetworkWork(applicationContext)) {
                 Log.w(TAG, "Complement skipped: no usable network")
                 return Result.failure()

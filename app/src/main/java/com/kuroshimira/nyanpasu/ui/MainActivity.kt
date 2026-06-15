@@ -86,6 +86,7 @@ class MainActivity : AppCompatActivity() {
                 scheduleReschedule = { scheduleUi.rescheduleIfEnabled() },
                 workInputBuilder = { urgent, slot, complement -> buildWallpaperWorkInput(urgent, slot, complement) },
                 syncStoredWallpapersToSystem = { syncStoredWallpapersToSystem() },
+                reconcileDualWallpaperUi = { reconcileDualWallpaperUi() },
             )
         workBindings.wire(owner = this)
 
@@ -159,7 +160,7 @@ class MainActivity : AppCompatActivity() {
         if (!WallpaperPrefs.isFirstLaunch(prefs) && !prefetchCoordinator.hasAppliedWallpaper()) {
             prefetchCoordinator.ensureInitialWallpaper()
         }
-        ensureDualWallpaperIfNeeded()
+        reconcileDualWallpaperUi()
 
         Handler(Looper.getMainLooper()).postDelayed({
             mascot.speak(getString(R.string.mascot_greeting))
@@ -317,8 +318,8 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** 粉蓝/蓝粉：仅补齐锁屏图；完成后同步到系统壁纸。 */
-    private fun ensureDualWallpaperIfNeeded() {
+    /** 根据磁盘/WorkManager 状态刷新双图 loading 提示，避免锁屏已换但 UI 仍转圈。 */
+    internal fun reconcileDualWallpaperUi() {
         if (!WallpaperTargetMode.isDualMode(previewState.homeState, previewState.lockState)) {
             statusHint.clear()
             return
@@ -336,7 +337,12 @@ class MainActivity : AppCompatActivity() {
             statusHint.show(getString(R.string.status_dual_in_progress))
             return
         }
-        if (refreshWork.manualRefreshInProgress || refreshWork.isApplyWorkBusy()) {
+
+        if (refreshWork.manualRefreshInProgress ||
+            refreshWork.isApplyWorkBusy() ||
+            WallpaperWriteGuard.isWriteInProgress()
+        ) {
+            statusHint.clear()
             return
         }
         if (WallpaperPrefs.isDualComplementCooldown(WallpaperPrefs.prefs(this))) {
@@ -352,8 +358,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        statusHint.show(getString(R.string.status_dual_fetching))
-        refreshWork.startLockComplementWork()
+        when {
+            refreshWork.tryEnqueueLockComplement() ->
+                statusHint.show(getString(R.string.status_dual_in_progress))
+            refreshWork.isComplementWorkBusy() ->
+                statusHint.show(getString(R.string.status_dual_in_progress))
+            else ->
+                statusHint.clear()
+        }
     }
 
     private fun syncStoredWallpapersToSystem() {
@@ -375,6 +387,7 @@ class MainActivity : AppCompatActivity() {
                         result,
                     )
                 }
+                reconcileDualWallpaperUi()
             }
     }
 
@@ -384,7 +397,8 @@ class MainActivity : AppCompatActivity() {
             previewState.homeState,
             previewState.lockState,
         )
-        ensureDualWallpaperIfNeeded()
+        refreshWork.resetComplementEnqueueDebounce()
+        reconcileDualWallpaperUi()
     }
 
     private fun buildWallpaperWorkInput(
@@ -429,7 +443,7 @@ class MainActivity : AppCompatActivity() {
                 workObserver.syncOnResume()
                 prefetchCoordinator.migrateIfNeeded()
                 preview.loadPreview()
-                ensureDualWallpaperIfNeeded()
+                reconcileDualWallpaperUi()
                 val prefs = WallpaperPrefs.prefs(this@MainActivity)
                 if (WallpaperPrefs.consumePendingAutoFailure(prefs)) {
                     Toast.makeText(

@@ -45,6 +45,7 @@ class RefreshWorkController(
     private var lastHandledComplementWorkId: UUID? = null
     private var lastHandledAutoWorkId: UUID? = null
     private var lastUrgentUserInitiated = true
+    private var lastComplementEnqueueAtMs = 0L
 
     fun isApplyWorkBusy(): Boolean = workObserver().isApplyWorkBusyCached()
 
@@ -166,6 +167,7 @@ class RefreshWorkController(
         }
         val wm = WorkManager.getInstance(activity)
         wm.cancelUniqueWork(WallpaperWorkNames.APPLY_DUAL_COMPLEMENT)
+        resetComplementEnqueueDebounce()
         lastHandledUrgentWorkId = null
         lastUrgentUserInitiated = true
         manualRefreshInProgress = true
@@ -221,8 +223,22 @@ class RefreshWorkController(
         }
     }
 
-    fun startLockComplementWork() {
-        if (WallpaperWriteGuard.isWriteInProgress()) return
+    fun resetComplementEnqueueDebounce() {
+        lastComplementEnqueueAtMs = 0L
+    }
+
+    /**
+     * 尝试入队锁屏 complement。
+     * @return true 若已在跑或成功入队；false 若写入锁占用或在 debounce 窗口内（caller 勿显示 loading）
+     */
+    fun tryEnqueueLockComplement(): Boolean {
+        if (WallpaperWriteGuard.isWriteInProgress()) return false
+        if (isComplementWorkBusy()) return true
+        val now = System.currentTimeMillis()
+        if (now - lastComplementEnqueueAtMs < COMPLEMENT_ENQUEUE_DEBOUNCE_MS) {
+            return false
+        }
+        lastComplementEnqueueAtMs = now
         lastHandledComplementWorkId = null
         WorkManager.getInstance(activity).enqueueUniqueWork(
             WallpaperWorkNames.APPLY_DUAL_COMPLEMENT,
@@ -238,11 +254,16 @@ class RefreshWorkController(
                 .addTag(WallpaperWorkNames.TAG_DUAL_COMPLEMENT)
                 .build(),
         )
+        return true
     }
 
     private fun resetRefreshButton() {
         binding.progressBar.visibility = View.GONE
         binding.btnUpdate.isEnabled = true
         binding.btnUpdate.text = activity.getString(R.string.btn_refresh)
+    }
+
+    private companion object {
+        const val COMPLEMENT_ENQUEUE_DEBOUNCE_MS = 5_000L
     }
 }

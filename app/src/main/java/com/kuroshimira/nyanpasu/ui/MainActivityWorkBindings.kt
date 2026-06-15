@@ -27,6 +27,7 @@ internal class MainActivityWorkBindings(
     private val scheduleReschedule: () -> Unit,
     private val workInputBuilder: (isUrgent: Boolean, prefetchSlot: String, complementLockOnly: Boolean) -> Data,
     private val syncStoredWallpapersToSystem: () -> Unit,
+    private val reconcileDualWallpaperUi: () -> Unit,
 ) {
     lateinit var refreshWork: RefreshWorkController
         private set
@@ -74,6 +75,7 @@ internal class MainActivityWorkBindings(
                                 activity.getString(R.string.toast_wallpaper_applied),
                                 Toast.LENGTH_SHORT,
                             ).show()
+                            reconcileDualWallpaperUi()
                         }
 
                         override fun onManualUrgentFailure(outcome: WallpaperJobOutcome) {
@@ -90,6 +92,7 @@ internal class MainActivityWorkBindings(
                                 statusHint().clear()
                                 syncStoredWallpapersToSystem()
                             }
+                            reconcileDualWallpaperUi()
                         }
 
                         override fun onLockComplementFinished(succeeded: Boolean) {
@@ -128,8 +131,9 @@ internal class MainActivityWorkBindings(
                         override fun enqueueUrgentDownload() =
                             refreshWork.startOneTimeWork(isUrgent = true, userInitiated = false)
 
-                        override fun enqueueLockComplement() =
-                            refreshWork.startLockComplementWork()
+                        override fun enqueueLockComplement() {
+                            refreshWork.tryEnqueueLockComplement()
+                        }
 
                         override fun reloadPreview() {
                             previewState.isPreviewingHome = true
@@ -170,6 +174,9 @@ internal class MainActivityWorkBindings(
                         override fun onComplementInfosUpdated(infos: List<WorkInfo>) {
                             refreshWork.updateBusyState()
                             refreshWork.reconcileComplementWork(infos)
+                            if (!refreshWork.isComplementWorkBusy()) {
+                                reconcileDualWallpaperUi()
+                            }
                         }
                         override fun onPeriodicInfosUpdated(infos: List<WorkInfo>) {
                             refreshWork.updateBusyState()
