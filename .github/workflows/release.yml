@@ -29,6 +29,7 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        # 不缓存 Gradle 构建产物，避免复用历史 unsigned APK
         cache: gradle
 
     - name: 🐘 Grant execute permission for gradlew
@@ -67,7 +68,7 @@ jobs:
       run: ./gradlew testReleaseUnitTest
 
     - name: 🔨 Build Release APK
-      run: ./gradlew assembleRelease --rerun-tasks
+      run: ./gradlew clean assembleRelease --no-build-cache
 
     - name: ✅ Verify signed APK
       run: |
