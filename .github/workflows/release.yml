@@ -45,6 +45,12 @@ jobs:
         keyPassword=$KEY_PASSWORD
         EOF
 
+    - name: ⚠️ Require signing secrets
+      if: env.KEYSTORE_BASE64 == ''
+      run: |
+        echo "::error::GitHub Secrets 未配置。请在仓库 Settings → Secrets and variables → Actions 添加 KEYSTORE_BASE64、KEYSTORE_PASSWORD、KEY_ALIAS、KEY_PASSWORD；或本地运行 scripts/setup-github-secrets.ps1（需先 gh auth login）。"
+        exit 1
+
     - name: 🧪 Run unit tests
       run: ./gradlew testReleaseUnitTest
 
