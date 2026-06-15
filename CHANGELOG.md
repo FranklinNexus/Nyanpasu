@@ -7,18 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.1] - 2026-06-15
+## [1.0.0] - 2026-06-15
 
 ### 🐛 Fixed
-- **自动换壁纸不生效**：周期 Worker 不再因检测到自身 RUNNING 而无限 retry
-- **Daily 7:00 回退错误**：无精确闹钟时改为 WorkManager 7:00 链（不再误用 24h 周期）
-- **Daily 链断档**：换图失败也会预约次日 7:00，不会一次失败后永久停更
-- **onResume 重置计时**：从设置返回仅 reconcile 精确闹钟，不再每次打开 App 重置 6/12/24h 周期
-- 手动 Refresh 成功后不再误触发全量 reschedule
-
----
-
-## [1.0.0] - 2026-06-13
+- **粉蓝双图锁屏 loading 卡住**：锁屏已换但 App 内仍转圈；补全 UI reconcile 与 complement 入队防抖
+- **自动换壁纸不生效**：周期 Worker 自 defer 无限 retry、Daily 7:00 链、onResume 误重置计时
+- **CI lintDebug 失败**：通知权限 `MissingPermission` Lint 报错
 
 ### 🎉 First Public Release
 
@@ -69,8 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Release Date | Key Features |
 |---------|-------------|--------------|
-| 1.0.1   | 2026-06-15  | 自动换壁纸调度修复 |
-| 1.0.0   | 2026-06-13  | First public release |
+| 1.0.0   | 2026-06-15  | 首次公开发布 + 双图 loading / 自动更新 / CI 修复 |
 
 ---
 
